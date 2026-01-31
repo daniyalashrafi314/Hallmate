@@ -19,20 +19,20 @@ def get_db_connection():
         print("Error connecting to the database:", e)
         return None
 
-@app.route("/payments")
-def show_payments():
+@app.route("/students")
+def show_students():
     conn = get_db_connection()
     if not conn:
         return "Failed to connect to the database."
     
     cur = conn.cursor()
-    cur.execute("SELECT * FROM payments;")  
+    cur.execute("SELECT * FROM students;")  
     rows = cur.fetchall()  # Fetch all rows from the table
     cur.close()
     conn.close()
     
     
-    output = "<h2>Payments Table</h2><ul>"
+    output = "<h2>Students Table</h2><ul>"
     for row in rows:
         output += f"<li>{row}</li>"
     output += "</ul>"
