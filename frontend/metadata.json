@@ -1,0 +1,8 @@
+
+{
+  "name": "UniHall - Management System",
+  "description": "A comprehensive University Hall Management System featuring role-based dashboards for students, staff, and provosts with bKash integration, residency wizards, and visual room grids.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
