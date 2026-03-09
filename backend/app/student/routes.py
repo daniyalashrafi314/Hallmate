@@ -1,0 +1,144 @@
+from flask import Blueprint, request, jsonify
+from app.db import execute_read_query, execute_write_query
+
+# 1. Define the Blueprint
+student_bp = Blueprint('student', __name__)
+
+# --- MOCK DATA ---
+# In a real app, this comes from the login session.
+CURRENT_STUDENT_ID = '2305108' 
+
+
+# --- 1) STUDENT PROFILE ---
+@student_bp.route('/profile', methods=['GET'])
+def get_profile():
+    # Join STUDENTS, USERS, and HALLS to get a complete picture
+    sql = """
+        SELECT s.student_id, s.name, s.phone_number, s.status, 
+               h.name as hall_name, u.email_address 
+        FROM STUDENTS s
+        JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
+        WHERE s.student_id = %s
+    """
+    profile = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    if profile:
+        return jsonify(profile[0])
+    return jsonify({"error": "Student not found"}), 404
+
+
+# --- 2) PAYMENTS (Fees) ---
+@student_bp.route('/payments', methods=['GET'])
+def get_payments():
+    # Shows all fees (Mess, Tuition, etc.) assigned to this student
+    sql = """
+        SELECT p.* FROM PAYMENTS p
+        JOIN FEES f ON p.payment_id = f.payment_id
+        WHERE f.student_id = %s
+        ORDER BY p.due_time DESC
+    """
+    return jsonify(execute_read_query(sql, (CURRENT_STUDENT_ID,)))
+
+@student_bp.route('/payments/<int:payment_id>/pay', methods=['POST'])
+def pay_fee(payment_id):
+    # Simulates paying a bill
+    sql = "UPDATE PAYMENTS SET status = 'Paid', paid_at = CURRENT_TIMESTAMP WHERE payment_id = %s"
+    success = execute_write_query(sql, (payment_id,))
+    if success:
+        return jsonify({"message": "Payment successful"})
+    return jsonify({"error": "Payment failed"}), 400
+
+
+# --- 3) DONATIONS ---
+@student_bp.route('/donations', methods=['GET'])
+def list_donations():
+    # View all active donation requests
+    sql = "SELECT * FROM DONATIONS WHERE end_date >= CURRENT_DATE"
+    return jsonify(execute_read_query(sql))
+
+@student_bp.route('/donations/<int:donation_id>/contribute', methods=['POST'])
+def contribute_donation(donation_id):
+    data = request.get_json()
+    amount = data.get('amount')
+
+    # Step 1: Create a Payment record
+    sql_pay = "INSERT INTO PAYMENTS (payment_type, amount, status, paid_at) VALUES ('Donation', %s, 'Paid', CURRENT_TIMESTAMP) RETURNING payment_id"
+    res = execute_read_query(sql_pay, (amount,))
+    
+    if res:
+        # Step 2: Link Payment to the Donation via GENERATES table
+        new_pay_id = res[0]['payment_id']
+        sql_gen = "INSERT INTO GENERATES (payment_id, donation_id) VALUES (%s, %s)"
+        execute_write_query(sql_gen, (new_pay_id, donation_id))
+        return jsonify({"message": "Thank you for your contribution!"}), 201
+    return jsonify({"error": "Donation failed"}), 500
+
+
+# --- 4) NOTICES ---
+@student_bp.route('/notices', methods=['GET'])
+def get_notices():
+    sql = "SELECT title, description, created_at FROM NOTICE ORDER BY created_at DESC"
+    return jsonify(execute_read_query(sql))
+
+
+# --- 5) VISITORS ---
+@student_bp.route('/visitors', methods=['POST'])
+def add_visitor():
+    data = request.get_json()
+    # visitor_id format example: 20240520-001
+    v_id = data.get('visitor_id') 
+    name = data.get('name')
+    rel = data.get('relationship')
+
+    sql = """
+        INSERT INTO VISITORS (visitor_id, student_id, name, relationship, entry_time)
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+    """
+    success = execute_write_query(sql, (v_id, CURRENT_STUDENT_ID, name, rel))
+    if success:
+        return jsonify({"message": "Visitor registered"}), 201
+    return jsonify({"error": "Failed to add visitor"}), 400
+
+
+# --- 6) COMPLAINTS ---
+@student_bp.route('/complaints', methods=['GET', 'POST'])
+def manage_complaints():
+    if request.method == 'GET':
+        sql = "SELECT * FROM COMPLAINTS WHERE student_id = %s"
+        return jsonify(execute_read_query(sql, (CURRENT_STUDENT_ID,)))
+
+    if request.method == 'POST':
+        data = request.get_json()
+        c_type = data.get('complaint_type') # e.g., 'Food'
+        desc = data.get('description')
+        
+        sql = "INSERT INTO COMPLAINTS (student_id, complaint_type, description) VALUES (%s, %s, %s)"
+        execute_write_query(sql, (CURRENT_STUDENT_ID, c_type, desc))
+        return jsonify({"message": "Complaint filed"}), 201
+
+@student_bp.route('/complaints/<int:complaint_id>', methods=['DELETE'])
+def remove_complaint(complaint_id):
+    # We add student_id to WHERE so students can't delete others' complaints
+    sql = "DELETE FROM COMPLAINTS WHERE complaint_id = %s AND student_id = %s"
+    success = execute_write_query(sql, (complaint_id, CURRENT_STUDENT_ID))
+    if success:
+        return jsonify({"message": "Complaint removed"})
+    return jsonify({"error": "Not found or unauthorized"}), 404
+
+
+# --- 7) SEAT APPLICATION (Residency) ---
+@student_bp.route('/apply-seat', methods=['POST'])
+def apply_seat():
+    data = request.get_json()
+    desc = data.get('description')
+    
+    # Check if they already have a pending application
+    check_sql = "SELECT * FROM SEAT_APPLICATION WHERE student_id = %s AND status = 'Pending'"
+    if execute_read_query(check_sql, (CURRENT_STUDENT_ID,)):
+        return jsonify({"error": "You already have a pending application"}), 400
+
+    sql = "INSERT INTO SEAT_APPLICATION (student_id, description) VALUES (%s, %s)"
+    success = execute_write_query(sql, (CURRENT_STUDENT_ID, desc))
+    if success:
+        return jsonify({"message": "Application submitted"}), 201
+    return jsonify({"error": "Submission failed"}), 500

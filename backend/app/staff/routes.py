@@ -1,22 +1,13 @@
-# app/staff/routes.py
-from flask import request, jsonify
-from . import staff_bp
-from app.db import execute_read_query, execute_write_query
-
-# MOCK ID for development (Replace with session logic later)
-CURRENT_STAFF_ID = 'S-101'
-
 from flask import Blueprint, request, jsonify
 from app.db import execute_read_query, execute_write_query
 
 # 1. Define the Blueprint
-# This tells Flask: "All URLs defined here belong to the 'staff' section"
+# We define it here so other files (like your main app.py) can import it.
 staff_bp = Blueprint('staff', __name__)
 
 # --- MOCK DATA ---
-# In a real app, you would get this from `session['user_id']` after login.
-# For now, we hardcode it to test the database queries.
-CURRENT_STAFF_ID = 'STF0000001' 
+# Hardcoded for development; will be replaced by session logic later.
+CURRENT_STAFF_ID = 'STF0000001'
 
 
 # --- 1) STAFF PROFILE PAGE ---
