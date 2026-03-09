@@ -4,10 +4,8 @@ from app.db import execute_read_query, execute_write_query
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
 
-# --- MOCK DATA ---
 # In a real app, this comes from the login session.
 CURRENT_STUDENT_ID = '2305108' 
-
 
 # --- 1) STUDENT PROFILE ---
 @student_bp.route('/profile', methods=['GET'])
@@ -25,7 +23,6 @@ def get_profile():
     if profile:
         return jsonify(profile[0])
     return jsonify({"error": "Student not found"}), 404
-
 
 # --- 2) PAYMENTS (Fees) ---
 @student_bp.route('/payments', methods=['GET'])
@@ -47,7 +44,6 @@ def pay_fee(payment_id):
     if success:
         return jsonify({"message": "Payment successful"})
     return jsonify({"error": "Payment failed"}), 400
-
 
 # --- 3) DONATIONS ---
 @student_bp.route('/donations', methods=['GET'])
@@ -73,13 +69,11 @@ def contribute_donation(donation_id):
         return jsonify({"message": "Thank you for your contribution!"}), 201
     return jsonify({"error": "Donation failed"}), 500
 
-
 # --- 4) NOTICES ---
 @student_bp.route('/notices', methods=['GET'])
 def get_notices():
     sql = "SELECT title, description, created_at FROM NOTICE ORDER BY created_at DESC"
     return jsonify(execute_read_query(sql))
-
 
 # --- 5) VISITORS ---
 @student_bp.route('/visitors', methods=['POST'])
@@ -98,7 +92,6 @@ def add_visitor():
     if success:
         return jsonify({"message": "Visitor registered"}), 201
     return jsonify({"error": "Failed to add visitor"}), 400
-
 
 # --- 6) COMPLAINTS ---
 @student_bp.route('/complaints', methods=['GET', 'POST'])
@@ -124,7 +117,6 @@ def remove_complaint(complaint_id):
     if success:
         return jsonify({"message": "Complaint removed"})
     return jsonify({"error": "Not found or unauthorized"}), 404
-
 
 # --- 7) SEAT APPLICATION (Residency) ---
 @student_bp.route('/apply-seat', methods=['POST'])

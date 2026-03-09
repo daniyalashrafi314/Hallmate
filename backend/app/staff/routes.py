@@ -9,7 +9,6 @@ staff_bp = Blueprint('staff', __name__)
 # Hardcoded for development; will be replaced by session logic later.
 CURRENT_STAFF_ID = 'STF0000001'
 
-
 # --- 1) STAFF PROFILE PAGE ---
 @staff_bp.route('/profile', methods=['GET'])
 def get_profile():
@@ -27,18 +26,15 @@ def get_profile():
         return jsonify(profile[0])
     return jsonify({"error": "Staff not found"}), 404
 
-
 # --- 2) NOTICE PAGE (View & Create) ---
 @staff_bp.route('/notices', methods=['GET', 'POST'])
 def manage_notices():
     if request.method == 'GET':
-        # View all notices ordered by newest first
         sql = "SELECT * FROM NOTICE ORDER BY created_at DESC"
         notices = execute_read_query(sql)
         return jsonify(notices)
 
     if request.method == 'POST':
-        # Create a new notice
         data = request.get_json()
         title = data.get('title')
         description = data.get('description')
@@ -53,7 +49,6 @@ def manage_notices():
             return jsonify({"message": "Notice published successfully"}), 201
         return jsonify({"error": "Failed to publish notice"}), 500
 
-
 # --- 3) MY PAYMENTS (Salary) ---
 @staff_bp.route('/my-payments', methods=['GET'])
 def get_my_payments():
@@ -66,7 +61,6 @@ def get_my_payments():
     """
     payments = execute_read_query(sql, (CURRENT_STAFF_ID,))
     return jsonify(payments)
-
 
 # --- 4) ASK FOR DONATIONS ---
 @staff_bp.route('/donations', methods=['POST'])
@@ -106,7 +100,6 @@ def create_donation():
 
     return jsonify({"error": "Failed to create donation"}), 500
 
-
 # --- 5) ADD PAYMENTS TO STUDENTS (Bulk) ---
 @staff_bp.route('/assign-fees', methods=['POST'])
 def assign_fees():
@@ -142,7 +135,6 @@ def assign_fees():
                 success_count += 1
     
     return jsonify({"message": f"Fees assigned to {success_count} students"}), 201
-
 
 # --- 6) EVENTS (Add/Delete/View) ---
 @staff_bp.route('/events', methods=['GET', 'POST'])

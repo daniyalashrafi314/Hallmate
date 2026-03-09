@@ -22,11 +22,14 @@ const Sidebar: React.FC = () => {
   const navItems = {
     [UserRole.STUDENT]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },
-      { to: '/residency', label: 'Residency App', icon: Layers },
+      { to: '/seat-application', label: 'Seat Application', icon: Layers },
       { to: '/payments', label: 'Payments', icon: CreditCard },
       { to: '/notices', label: 'Notices & Events', icon: Calendar },
+      { to: '/visitors', label: 'Visitors', icon: Users },
+      { to: '/donations', label: 'Donations', icon: CreditCard }
     ],
     [UserRole.STAFF]: [
+      { to: '/dashboard', label: 'Visitor Logs', icon: Users },
       { to: '/visitor-logs', label: 'Visitor Logs', icon: Users },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
       { to: '/notices-manage', label: 'Post Notice', icon: FileText },

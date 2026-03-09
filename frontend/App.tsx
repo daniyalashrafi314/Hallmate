@@ -8,10 +8,15 @@ import Header from './components/Layout/Header';
 
 // Pages
 import StudentHome from './pages/Student/StudentHome';
-import StudentResidencyWizard from './pages/Student/StudentResidencyWizard';
+import StudentSeatApplication from './pages/Student/StudentSeatApplication';
+import StudentVisitors from './pages/Student/StudentVisitors';
 import StudentPayments from './pages/Student/StudentPayments';
+import StudentNotices from './pages/Student/StudentNotices';
+import StudentDonations from './pages/Student/StudentDonations';
+
 import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
 import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
+
 import ProvostRoomGrid from './pages/Provost/ProvostRoomGrid';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 
@@ -48,15 +53,15 @@ const App: React.FC = () => {
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 
                 {/* Student Routes */}
-                <Route path="/dashboard" element={
-                  userRole === UserRole.STUDENT ? <StudentHome /> : 
-                  userRole === UserRole.STAFF ? <StaffVisitorLogs /> : 
-                  <ProvostUserManagement />
-                } />
-                <Route path="/residency" element={<StudentResidencyWizard />} />
+                <Route path="/dashboard" element={<StudentHome />} />
+                <Route path="/seat-application" element={<StudentSeatApplication />} />
                 <Route path="/payments" element={<StudentPayments />} />
-                
+                <Route path="/visitors" element={<StudentVisitors />} />
+                <Route path="/notices" element={<StudentNotices />} />
+                <Route path="/donations" element={<StudentDonations />} />
+
                 {/* Staff Routes */}
+                <Route path="/dashboard" element={<StaffVisitorLogs />} />
                 <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
                 <Route path="/request-payment" element={<StaffPaymentRequest />} />
 

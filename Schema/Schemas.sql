@@ -153,7 +153,6 @@ CREATE TABLE   FEES( --12
         REFERENCES PAYMENTS(payment_id)
         ON DELETE CASCADE
 
-
 );
 CREATE TABLE   SALARY( --13
     payment_id  INT PRIMARY KEY,

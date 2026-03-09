@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAppContext } from '../../App';
 import { CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 
-const StudentResidencyWizard: React.FC = () => {
+const StudentSeatApplication: React.FC = () => {
   const { theme, user } = useAppContext();
   const [step, setStep] = useState(1);
   const [isPending, setIsPending] = useState(false);
@@ -166,4 +166,4 @@ const StudentResidencyWizard: React.FC = () => {
   );
 };
 
-export default StudentResidencyWizard;
+export default StudentSeatApplication;
