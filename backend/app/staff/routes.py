@@ -14,9 +14,18 @@ CURRENT_STAFF_ID = 'STF0000001'
 def get_profile():
     # We join STAFFS and USERS to get all details including email
     sql = """
-        SELECT s.staff_id, s.name, s.phone_number, s.role, s.hall_id, u.email_address 
+        SELECT 
+        s.staff_id,
+        s.name AS staff_name,
+        s.phone_number,
+        s.role,
+        s.hall_id,
+        h.name AS hall_name,
+        h.provost,
+        u.email_address
         FROM STAFFS s
         JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
         WHERE s.staff_id = %s
     """
     # We pass a tuple (CURRENT_STAFF_ID,) to safely insert the variable into SQL

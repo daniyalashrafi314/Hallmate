@@ -16,6 +16,7 @@ import StudentDonations from './pages/Student/StudentDonations';
 
 import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
 import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
+import StaffProfile from './pages/Staff/StaffProfile';
 
 import ProvostRoomGrid from './pages/Provost/ProvostRoomGrid';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
@@ -64,6 +65,7 @@ const App: React.FC = () => {
                 <Route path="/dashboard" element={<StaffVisitorLogs />} />
                 <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
                 <Route path="/request-payment" element={<StaffPaymentRequest />} />
+                <Route path="/profile" element={<StaffProfile />} />
 
                 {/* Provost Routes */}
                 <Route path="/room-grid" element={<ProvostRoomGrid />} />

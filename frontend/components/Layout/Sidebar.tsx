@@ -29,6 +29,7 @@ const Sidebar: React.FC = () => {
       { to: '/donations', label: 'Donations', icon: CreditCard }
     ],
     [UserRole.STAFF]: [
+      { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/dashboard', label: 'Visitor Logs', icon: Users },
       { to: '/visitor-logs', label: 'Visitor Logs', icon: Users },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
