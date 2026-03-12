@@ -10,6 +10,10 @@ staff_bp = Blueprint('staff', __name__)
 CURRENT_STAFF_ID = 'STF0000001'
 
 # --- 1) STAFF PROFILE PAGE ---
+#Few issues that will be fixed later, there is a search bar in profile page which is not necessary
+#Notification does not work
+#Name in the lower section of the sidebar is still not connected to db
+
 @staff_bp.route('/profile', methods=['GET'])
 def get_profile():
     # We join STAFFS and USERS to get all details including email
@@ -34,6 +38,80 @@ def get_profile():
     if profile:
         return jsonify(profile[0])
     return jsonify({"error": "Staff not found"}), 404
+
+#----1)For changing the profile info
+
+
+@staff_bp.route('/profile', methods=['PUT'])
+def edit_profile():
+    data = request.get_json()
+    name = data.get("staff_name")
+    phone= data.get("phone_number")
+    email = data.get("email_address")
+
+    if not name or not email:
+        return jsonify({"error": "Missing fields"}), 400
+    sql1 = """
+            UPDATE STAFFS
+            SET name = %s,
+            phone_number = %s
+            WHERE staff_id = %s
+            """
+    execute_write_query(sql1, (name, phone, CURRENT_STAFF_ID))
+    sql2 = """
+        UPDATE USERS
+        SET email_address = %s
+        WHERE user_id = (
+            SELECT user_id
+            FROM STAFFS
+            WHERE staff_id =%s
+        )"""
+    execute_write_query(sql2, (email, CURRENT_STAFF_ID))
+    sql3 = """
+        SELECT role, hall_id
+        FROM STAFFS
+        WHERE staff_id = %s
+        """
+    result = execute_read_query(sql3, (CURRENT_STAFF_ID))
+    if result:
+        role = result[0]["role"]
+        hall_id = result[0]["hall_id"]
+
+    if role.lower() == "provost":
+        sql = """
+        UPDATE HALLS
+        SET provost = %s
+        WHERE hall_id = %s
+        """
+        execute_write_query(sql, (name, hall_id))
+
+    return jsonify({"message": "Profile updated successfully"})
+
+#---2)Profile change password
+@staff_bp.route('/change-password', methods=['PUT'])
+def change_password():
+    data = request.get_json()
+
+    new_password = data.get("new_password")
+    confirm_password = data.get("confirm_password")
+    if not new_password:
+        return jsonify({"error": "Password required"}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"error": "Passwords do not match"}), 400
+    sql = """
+        UPDATE USERS
+        SET password = %s
+        WHERE user_id = (
+            SELECT user_id
+            FROM STAFFS
+            WHERE staff_id = %s
+            )
+        """
+    execute_write_query(sql, (new_password, CURRENT_STAFF_ID))
+    return jsonify({"message": "Password changed successfully"})
+
+
 
 # --- 2) NOTICE PAGE (View & Create) ---
 @staff_bp.route('/notices', methods=['GET', 'POST'])
