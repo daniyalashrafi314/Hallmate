@@ -5,7 +5,7 @@ from app.db import execute_read_query, execute_write_query
 student_bp = Blueprint('student', __name__)
 
 # In a real app, this comes from the login session.
-CURRENT_STUDENT_ID = '2305108' 
+CURRENT_STUDENT_ID = '2305108'
 
 # --- 1) STUDENT PROFILE ---
 @student_bp.route('/profile', methods=['GET'])
@@ -46,28 +46,103 @@ def pay_fee(payment_id):
     return jsonify({"error": "Payment failed"}), 400
 
 # --- 3) DONATIONS ---
+
 @student_bp.route('/donations', methods=['GET'])
 def list_donations():
-    # View all active donation requests
-    sql = "SELECT * FROM DONATIONS WHERE end_date >= CURRENT_DATE"
-    return jsonify(execute_read_query(sql))
+    # This query joins DONATIONS -> ASKS_FOR -> STUDENTS (and STAFFS)
+    # COALESCE picks the first non-null value, perfectly handling the Student vs Staff logic
+    sql = """
+        SELECT 
+            d.donation_id as id,
+            d.description,
+            TO_CHAR(d.end_date, 'YYYY-MM-DD') as "endDate",
+            d.status,
+            COALESCE(st.student_id, sf.staff_id) as "requesterId",
+            COALESCE(st.name, sf.name) as "requesterName",
+            CASE 
+                WHEN st.student_id IS NOT NULL THEN 'Student'
+                ELSE 'Staff'
+            END as "requesterType",
+            COALESCE(st.phone_number, sf.phone_number) as phone
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON d.donation_id = af.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS sf ON af.staff_id = sf.staff_id
+        WHERE d.end_date >= CURRENT_DATE
+        ORDER BY d.start_date DESC
+    """
+    donations = execute_read_query(sql)
+    return jsonify(donations)
 
-@student_bp.route('/donations/<int:donation_id>/contribute', methods=['POST'])
-def contribute_donation(donation_id):
+@student_bp.route('/donations', methods=['POST'])
+def create_donation():
     data = request.get_json()
-    amount = data.get('amount')
+    desc = data.get('description')
+    end_date = data.get('endDate')
+    
+    # This single query inserts the donation AND links it to the student instantly
+    sql = """
+        WITH new_donation AS (
+            INSERT INTO DONATIONS (description, end_date) 
+            VALUES (%s, %s) 
+            RETURNING donation_id
+        )
+        INSERT INTO ASKS_FOR (donation_id, student_id)
+        SELECT donation_id, %s FROM new_donation;
+    """
+    
+    success = execute_write_query(sql, (desc, end_date, CURRENT_STUDENT_ID))
+    
+    if success:
+        return jsonify({"message": "Donation request submitted"}), 201
+    return jsonify({"error": "Failed to create request"}), 500
 
-    # Step 1: Create a Payment record
-    sql_pay = "INSERT INTO PAYMENTS (payment_type, amount, status, paid_at) VALUES ('Donation', %s, 'Paid', CURRENT_TIMESTAMP) RETURNING payment_id"
+@student_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
+def withdraw_donation(donation_id):
+    # Ensure a student can only delete their OWN pending donation
+    sql = """
+        DELETE FROM DONATIONS 
+        WHERE donation_id = %s 
+        AND status = 'Pending'
+        AND donation_id IN (
+            SELECT donation_id FROM ASKS_FOR WHERE student_id = %s
+        )
+    """
+    success = execute_write_query(sql, (donation_id, CURRENT_STUDENT_ID))
+    if success:
+        return jsonify({"message": "Donation request withdrawn"}), 200
+    return jsonify({"error": "Cannot delete this donation"}), 403
+
+@student_bp.route('/donations/<int:donation_id>/pledge', methods=['POST'])
+def pledge_donation(donation_id):
+    data = request.get_json()
+    amount = data.get('pledgeAmount') # Matches frontend payload
+    
+    if not amount or float(amount) <= 0:
+         return jsonify({"error": "Invalid amount"}), 400
+
+    # Step 1: Create a Payment obligation (Status: Due)
+    sql_pay = """
+        INSERT INTO PAYMENTS (payment_type, amount, due_time, status) 
+        VALUES ('Donation', %s, CURRENT_TIMESTAMP, 'Due') 
+        RETURNING payment_id
+    """
     res = execute_read_query(sql_pay, (amount,))
     
     if res:
-        # Step 2: Link Payment to the Donation via GENERATES table
         new_pay_id = res[0]['payment_id']
+        
+        # Step 2: Link Payment to the specific Donation (GENERATES)
         sql_gen = "INSERT INTO GENERATES (payment_id, donation_id) VALUES (%s, %s)"
         execute_write_query(sql_gen, (new_pay_id, donation_id))
-        return jsonify({"message": "Thank you for your contribution!"}), 201
-    return jsonify({"error": "Donation failed"}), 500
+        
+        # Step 3: Link Payment to the Student who pledged (FEES)
+        sql_fee = "INSERT INTO FEES (payment_id, student_id) VALUES (%s, %s)"
+        execute_write_query(sql_fee, (new_pay_id, CURRENT_STUDENT_ID))
+        
+        return jsonify({"message": "Pledge recorded as a due payment."}), 201
+        
+    return jsonify({"error": "Pledge failed"}), 500
 
 # --- 4) NOTICES ---
 @student_bp.route('/notices', methods=['GET'])

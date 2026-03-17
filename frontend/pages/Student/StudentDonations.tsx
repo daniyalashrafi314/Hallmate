@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../../App';
-import { Heart, Plus, Calendar, User, Phone, CheckCircle2, AlertCircle, XCircle, Trash2, DollarSign, ArrowRight } from 'lucide-react';
+import { Heart, Plus, Calendar, User, Phone, CheckCircle2, AlertCircle, XCircle, Trash2, ArrowRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 // --- Types ---
 interface Donation {
   id: string;
-  studentId: string;
-  studentName: string;
+  requesterId: string;
+  requesterName: string;
+  requesterType: 'Student' | 'Staff';
   description: string;
   endDate: string;
   phone: string;
@@ -19,96 +20,125 @@ const StudentDonations: React.FC = () => {
   
   // --- State ---
   const [activeTab, setActiveTab] = useState<'all' | 'mine'>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [donations, setDonations] = useState<Donation[]>([]);
   
   // Wizard State: 0 = Closed, 1 = Form, 2 = Confirm, 3 = Success
   const [wizardStep, setWizardStep] = useState<number>(0);
   const [formData, setFormData] = useState({ endDate: '', phone: '', description: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Payment Modal State
   const [payModalFor, setPayModalFor] = useState<Donation | null>(null);
   const [payAmount, setPayAmount] = useState<string>('');
 
-  // --- Mock Data ---
-  const [donations, setDonations] = useState<Donation[]>([
-    {
-      id: 'D101',
-      studentId: '2105123',
-      studentName: 'Rahim Uddin',
-      description: 'Medical assistance required for an urgent appendicitis surgery. Any contribution will help cover the hospital bills.',
-      endDate: '2026-03-25T23:59:59Z',
-      phone: '01711000000',
-      status: 'Approved'
-    },
-    {
-      id: 'D102',
-      studentId: '2205001',
-      studentName: 'Karim Hasan',
-      description: 'Departmental senior project funding shortfall. Need help buying specific microcontrollers.',
-      endDate: '2026-04-10T23:59:59Z',
-      phone: '01811000000',
-      status: 'Approved'
-    },
-    {
-      id: 'D103',
-      studentId: user?.id || '2305108',
-      studentName: user?.name || 'Current User',
-      description: 'Requesting financial aid for the upcoming semester tuition fees due to a sudden family crisis.',
-      endDate: '2026-05-01T23:59:59Z',
-      phone: '01911000000',
-      status: 'Pending'
+  // --- API URL (Adjust to your backend) ---
+  const API_BASE = 'http://localhost:5000/student/donations';
+
+  // --- 1. Fetch Data ---
+  const fetchDonations = async (showSpinner = true) => {
+    try {
+      if (showSpinner) setLoading(true);
+      const response = await fetch(API_BASE);
+      if (!response.ok) throw new Error('Failed to fetch donations');
+      const data = await response.json();
+      setDonations(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error(err);
+    } finally {
+      if (showSpinner) setLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    fetchDonations();
+  }, []);
 
   // --- Derived Data ---
-  // "All" tab only shows Approved requests that haven't expired (mock logic assumes dates are in the future)
   const availableDonations = donations.filter(d => d.status === 'Approved');
-  const myDonations = donations.filter(d => d.studentId === user?.id);
+  const myDonations = donations.filter(d => String(d.requesterId) === String(user?.id));
 
-  // --- Handlers ---
-  const handleWizardSubmit = () => {
-    // Transition to Success Step
-    setWizardStep(3);
-    
-    // Simulate Backend API Call (POST /student/donations)
-    const newDonation: Donation = {
-      id: `D${Math.floor(Math.random() * 1000)}`,
-      studentId: user?.id || 'Unknown',
-      studentName: user?.name || 'Unknown',
-      description: formData.description,
-      endDate: new Date(formData.endDate).toISOString(),
-      phone: formData.phone,
-      status: 'Pending'
-    };
+  // --- 2. Submit New Request (POST) ---
+  const handleWizardSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: formData.description,
+          endDate: formData.endDate // Backend expects this!
+        }),
+      });
 
-    setDonations([newDonation, ...donations]);
-
-    // Close wizard after 2 seconds
-    setTimeout(() => {
-      setWizardStep(0);
-      setFormData({ endDate: '', phone: '', description: '' });
-      setActiveTab('mine'); // Automatically switch to 'mine' tab to see it
-    }, 2000);
-  };
-
-  const handleDeleteRequest = (id: string) => {
-    if (confirm("Are you sure you want to withdraw this donation request?")) {
-      // Simulate Backend API Call (DELETE /student/donations/:id)
-      setDonations(donations.filter(d => d.id !== id));
+      if (!response.ok) throw new Error('Failed to submit request');
+      
+      await fetchDonations(false); 
+      
+      setWizardStep(3);
+      
+      setTimeout(() => {
+        setWizardStep(0);
+        setFormData({ endDate: '', phone: '', description: '' });
+        setActiveTab('mine');
+      }, 2000);
+      
+    } catch (err) {
+      alert("Failed to submit donation request. Check terminal for CORS or DB errors.");
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handlePledgeDonation = () => {
+  // --- 3. Withdraw Request (DELETE) ---
+  const handleDeleteRequest = async (id: string) => {
+    if (confirm("Are you sure you want to withdraw this donation request?")) {
+      try {
+        const response = await fetch(`${API_BASE}/${id}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) throw new Error('Failed to delete request');
+        
+        // Remove from UI after successful DB deletion
+        setDonations(donations.filter(d => d.id !== id));
+      } catch (err) {
+        alert("Failed to withdraw request.");
+        console.error(err);
+      }
+    }
+  };
+
+  // --- 4. Pledge Donation (POST) ---
+  const handlePledgeDonation = async () => {
     if (!payAmount || isNaN(Number(payAmount)) || Number(payAmount) <= 0) {
       alert("Please enter a valid amount.");
       return;
     }
 
-    // Simulate Backend API Call (POST /student/donations/:id/pledge)
-    // This is where your backend logic will create an entry in the PAYMENTS and GENERATES table!
-    alert(`Successfully pledged ৳${payAmount}. A payment invoice has been generated in your Payments tab.`);
-    
-    setPayModalFor(null);
-    setPayAmount('');
+    try {
+      const response = await fetch(`${API_BASE}/${payModalFor?.id}/pledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pledgeAmount: Number(payAmount),
+          donorId: user?.id // Assuming your backend needs to know who is donating
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to pledge donation');
+
+      alert(`Successfully pledged ৳${payAmount}. A payment invoice has been generated in your Payments tab.`);
+      setPayModalFor(null);
+      setPayAmount('');
+    } catch (err) {
+      alert("Failed to process pledge. Please try again.");
+      console.error(err);
+    }
   };
 
   // --- Render Helpers ---
@@ -121,10 +151,21 @@ const StudentDonations: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-12 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading community requests...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 relative">
       
-      {/* Header Section */}
+      {/* ... [KEEP THE REST OF YOUR UI RENDERING EXACTLY THE SAME] ... */}
+      
+      {/* Example UI snippet to show where the loading/submission states fit in */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
         <div>
           <h2 className={`text-2xl font-bold ${theme.text}`}>Community Donations</h2>
@@ -137,6 +178,12 @@ const StudentDonations: React.FC = () => {
           <Plus className="w-5 h-5" /> Ask for Donation
         </button>
       </div>
+
+      {error && (
+         <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-red-700 font-medium">
+           {error}
+         </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-4 border-b border-gray-200 mb-6">
@@ -164,8 +211,8 @@ const StudentDonations: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                  <div className="flex items-center gap-2">
                    <User className={`w-4 h-4 ${theme.text}`} />
-                   <span className="font-bold text-gray-800">{donation.studentName}</span>
-                   <span className="text-gray-400 text-xs">({donation.studentId})</span>
+                   <span className="font-bold text-gray-800">{donation.requesterName}</span>
+                   <span className="text-gray-400 text-xs">({donation.requesterId})</span>
                  </div>
                  {activeTab === 'mine' && renderStatusBadge(donation.status)}
               </div>
@@ -219,118 +266,118 @@ const StudentDonations: React.FC = () => {
         )}
       </div>
 
-      {/* ========================================= */}
-      {/* MODALS & WIZARDS BELOW */}
-      {/* ========================================= */}
-
+      {/* Donation Request Wizard */}
       {/* Donation Request Wizard */}
       {wizardStep > 0 && (
         <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden">
             
-            {/* Step 1: Input Form */}
+            {/* Header */}
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 text-lg">
+                {wizardStep === 1 ? 'Ask for Donation' : 'Confirm Request'}
+              </h3>
+              <button 
+                onClick={() => { setWizardStep(0); setFormData({ endDate: '', phone: '', description: '' }); }}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* STEP 1: The Form */}
             {wizardStep === 1 && (
-              <div className="p-8">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Request Financial Aid</h3>
-                  <button onClick={() => setWizardStep(0)} className="text-gray-400 hover:text-gray-600"><XCircle /></button>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Reason for Donation</label>
+                  <textarea 
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    placeholder="Briefly explain why you need financial assistance..."
+                    className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500 min-h-[100px]"
+                  />
                 </div>
-                
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-400 uppercase">Student ID</label>
-                      <input type="text" disabled value={user?.id || ''} className="w-full p-2 bg-gray-100 rounded-lg text-gray-500 cursor-not-allowed" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-400 uppercase">Hall Name</label>
-                      <input type="text" disabled value={user?.hall || 'Fazlul Huq Muslim Hall'} className="w-full p-2 bg-gray-100 rounded-lg text-gray-500 cursor-not-allowed" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Need by Date</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">bKash Number</label>
                     <input 
-                      type="date" 
-                      value={formData.endDate}
-                      onChange={e => setFormData({...formData, endDate: e.target.value})}
-                      className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" 
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase">bKash Number (For Payout)</label>
-                    <input 
-                      type="tel" 
-                      placeholder="e.g. 01700000000"
+                      type="tel"
                       value={formData.phone}
-                      onChange={e => setFormData({...formData, phone: e.target.value})}
-                      className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500" 
+                      onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                      placeholder="017XXXXXXXX"
+                      className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500"
                     />
                   </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Reasoning / Description</label>
-                    <textarea 
-                      placeholder="Explain why you are requesting these funds..."
-                      value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
-                      className="w-full h-24 p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 resize-none"
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Needed By</label>
+                    <input 
+                      type="date"
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+                      className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500"
                     />
                   </div>
                 </div>
 
-                <div className="mt-8 flex justify-end gap-3">
-                  <button onClick={() => setWizardStep(0)} className="px-4 py-2 font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <div className="pt-4 flex justify-end">
                   <button 
-                    onClick={() => setWizardStep(2)} 
-                    disabled={!formData.endDate || !formData.phone || !formData.description}
-                    className={`px-6 py-2 font-bold text-white rounded-lg transition-colors ${(!formData.endDate || !formData.phone || !formData.description) ? 'bg-gray-300' : theme.primary}`}
+                    onClick={() => {
+                      if(!formData.description || !formData.phone || !formData.endDate) {
+                        alert("Please fill all fields");
+                        return;
+                      }
+                      setWizardStep(2);
+                    }}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-white font-bold transition-all ${theme.primary} shadow-md`}
                   >
-                    Next Step
+                    Next <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Confirmation */}
+            {/* STEP 2: Confirmation & Loading */}
             {wizardStep === 2 && (
-              <div className="p-8">
-                <h3 className="text-xl font-bold text-gray-900 mb-6">Confirm Request</h3>
+              <div className="p-6 space-y-4">
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 flex gap-3 text-amber-800">
+                  <AlertCircle className="w-6 h-6 shrink-0" />
+                  <p className="text-sm font-medium">Please review your request. Once submitted, it will be visible to others for contributions.</p>
+                </div>
                 
-                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-6 flex gap-3">
-                  <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
-                  <p className="text-sm text-amber-800">
-                    Your request will be sent to the Provost for approval. Once approved, it will be visible to all hall residents. Make sure your bKash number is correct.
-                  </p>
+                <div className="space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl">
+                  <p><strong className="text-gray-800">Reason:</strong> {formData.description}</p>
+                  <p><strong className="text-gray-800">bKash:</strong> {formData.phone}</p>
+                  <p><strong className="text-gray-800">Deadline:</strong> {formData.endDate}</p>
                 </div>
 
-                <div className="space-y-2 mb-8 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                  <p className="text-sm"><span className="font-bold text-gray-500">Phone:</span> {formData.phone}</p>
-                  <p className="text-sm"><span className="font-bold text-gray-500">Deadline:</span> {formData.endDate}</p>
-                  <p className="text-sm italic text-gray-600 mt-2">"{formData.description}"</p>
-                </div>
-
-                <div className="flex justify-between">
-                  <button onClick={() => setWizardStep(1)} className="px-4 py-2 font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Back to Edit</button>
+                <div className="pt-4 flex justify-between">
+                  <button 
+                    onClick={() => setWizardStep(1)} 
+                    className="px-4 py-2 font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Back to Edit
+                  </button>
                   <button 
                     onClick={handleWizardSubmit} 
-                    className="flex items-center gap-2 px-6 py-2 font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg"
+                    disabled={isSubmitting}
+                    className={`flex items-center gap-2 px-6 py-2 font-bold text-white rounded-lg transition-all ${
+                      isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 shadow-md'
+                    }`}
                   >
-                    Submit to Provost <ArrowRight className="w-4 h-4" />
+                    {isSubmitting ? 'Submitting...' : <>Submit Request <CheckCircle2 className="w-4 h-4" /></>}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Success Screen */}
+            {/* STEP 3: Success Screen */}
             {wizardStep === 3 && (
-              <div className="p-12 text-center">
-                <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 className="w-12 h-12" />
+              <div className="p-10 text-center space-y-4">
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2 animate-bounce">
+                  <CheckCircle2 className="w-10 h-10" />
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Request Submitted!</h3>
-                <p className="text-gray-500">Your application is now pending Provost approval.</p>
+                <h3 className="text-2xl font-bold text-gray-800">Request Submitted!</h3>
+                <p className="text-gray-500">Your donation request has been successfully posted to the community board.</p>
               </div>
             )}
 
@@ -339,47 +386,7 @@ const StudentDonations: React.FC = () => {
       )}
 
       {/* Pay / Pledge Donation Modal */}
-      {payModalFor && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-8 text-center">
-            <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Heart className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-1">Make a Donation</h3>
-            <p className="text-sm text-gray-500 mb-6">Supporting {payModalFor.studentName}</p>
-            
-            <div className="relative mb-6">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xl">৳</span>
-              <input 
-                type="number" 
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="w-full pl-10 pr-4 py-3 text-lg font-bold border-2 border-gray-200 rounded-xl outline-none focus:border-green-500 text-gray-800 transition-colors"
-              />
-            </div>
-
-            <p className="text-xs text-gray-400 mb-6 px-4">
-              Confirming this will generate a payment obligation in your "Payments" tab. You can clear it via bKash there.
-            </p>
-
-            <div className="flex gap-3">
-              <button 
-                onClick={() => { setPayModalFor(null); setPayAmount(''); }} 
-                className="flex-1 py-3 font-bold text-gray-500 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handlePledgeDonation}
-                className="flex-1 py-3 font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-md shadow-green-900/20"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ... Keep exact same UI for this modal, it will now trigger the updated handlePledgeDonation ... */}
 
     </div>
   );

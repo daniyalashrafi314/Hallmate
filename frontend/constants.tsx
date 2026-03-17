@@ -48,7 +48,7 @@ export const THEME_CONFIG = {
 };
 
 export const MOCK_USER: any = {
-  STUDENT: { id: '230101', name: 'Ariful Islam', email: 'arif@du.ac.bd', role: 'STUDENT', admissionYear: '2023', dept: 'CSE', room: '304-A' },
+  STUDENT: { id: '2305108', name: 'Ariful Islam', email: 'arif@du.ac.bd', role: 'STUDENT', admissionYear: '2023', dept: 'CSE', room: '304-A' },
   STAFF: { id: 'S-992', name: 'Jannat Begum', email: 'jannat.hms@du.ac.bd', role: 'STAFF' },
   PROVOST: { id: 'P-001', name: 'Dr. Rafiqul Huq', email: 'rafiqul@du.ac.bd', role: 'PROVOST' }
 };

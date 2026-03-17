@@ -9,8 +9,8 @@ import Header from './components/Layout/Header';
 // Pages
 import StudentHome from './pages/Student/StudentHome';
 import StudentSeatApplication from './pages/Student/StudentSeatApplication';
-import StudentVisitors from './pages/Student/StudentVisitors';
 import StudentPayments from './pages/Student/StudentPayments';
+import StudentVisitors from './pages/Student/StudentVisitors';
 import StudentNotices from './pages/Student/StudentNotices';
 import StudentDonations from './pages/Student/StudentDonations';
 
