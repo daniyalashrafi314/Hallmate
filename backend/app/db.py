@@ -34,17 +34,22 @@ def execute_read_query(query, params=None):
         print(f"Error executing read query: {e}")
         return []
 
-def execute_write_query(query, params=None):
+def execute_write_query(query, params=None, return_result=False):
     """
     Used for INSERT, UPDATE, DELETE.
-    Returns True if successful, False otherwise.
+    If return_result=True, returns fetched data (for RETURNING queries).
+    Otherwise returns True/False.
     """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)
-                # Transaction is automatically committed here when block ends
+
+                if return_result:
+                    return cur.fetchall()
+
         return True
+
     except Exception as e:
         print(f"Error executing write query: {e}")
         return False

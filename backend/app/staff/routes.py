@@ -8,6 +8,7 @@ staff_bp = Blueprint('staff', __name__)
 # --- MOCK DATA ---
 # Hardcoded for development; will be replaced by session logic later.
 CURRENT_STAFF_ID = 'STF0000001'
+CURRENT_HALL_ID = 1
 
 # --- 1) STAFF PROFILE PAGE ---
 #Few issues that will be fixed later, there is a search bar in profile page which is not necessary
@@ -135,6 +136,114 @@ def manage_notices():
         if success:
             return jsonify({"message": "Notice published successfully"}), 201
         return jsonify({"error": "Failed to publish notice"}), 500
+
+# ---3) ADD PAYMENTS (STUDENTS)
+
+@staff_bp.route('/add-payments', methods=['POST'])
+def add_payments():
+    data = request.get_json()
+
+    student_ids = data.get("student_ids")
+    payment_type = data.get("payment_type")
+    amount = data.get("amount")
+    due_time = data.get("due_time")
+    
+
+    if not student_ids or not amount or not due_time or not payment_type:
+        return jsonify({"error":"Missing fields"}),400
+    
+    sql = """
+    SELECT student_id
+    FROM STUDENTS
+    WHERE student_id = ANY(%s)
+    AND hall_id = %s
+    """
+    valid_students = execute_read_query(sql, (student_ids, CURRENT_HALL_ID))
+    if not valid_students:
+        return jsonify({"error": "No valid students found"}), 400
+    sql_payment ="""
+    INSERT INTO PAYMENTS (payment_type, amount, due_time, status)
+    VALUES (%s, %s, %s, %s)
+    RETURNING payment_id
+    """
+    sql_fees = """
+        INSERT INTO FEES (payment_id, student_id)
+        VALUES (%s, %s)
+        """
+    created_count = 0
+    for student in valid_students:
+        payment_result = execute_write_query(
+            sql_payment,
+            (payment_type, amount, due_time, "Due"),
+            return_result=True
+        )
+        payment_id = payment_result[0]["payment_id"]
+        execute_write_query(sql_fees, (payment_id, student["student_id"]))
+        created_count+=1
+    return jsonify({
+    "message": "Payment notices created successfully",
+    "count": created_count
+    })
+    
+
+
+
+
+@staff_bp.route('/students', methods=['GET'])
+def get_students():
+    search = request.args.get("search")
+    room = request.args.get("room")
+    batch = request.args.get("batch")
+    sql = """
+        SELECT s.student_id, s.name, a.room_id
+        FROM STUDENTS s
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id
+        WHERE s.hall_id = %s
+        """
+    params = [CURRENT_HALL_ID]
+    if room:
+        sql+= " AND a.room_id = %s"
+        params.append(room)
+    if batch:
+        sql+= " AND SUBSTR(s.student_id, 1, 2) = %s"
+        params.append(batch)
+    if search:
+        sql+=" AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        params.append(f"%{search}%")
+        params.append(f"%{search}%")
+
+    students = execute_read_query(sql, tuple(params))
+    return jsonify(students)
+
+    
+
+@staff_bp.route('/rooms', methods=['GET'])
+def get_rooms():
+    sql1 = """
+        SELECT room_id
+        FROM ROOMS
+        WHERE hall_id = %s
+    """
+    rooms = execute_read_query(sql1, (CURRENT_HALL_ID,))
+    return jsonify(rooms)
+
+    
+
+
+@staff_bp.route('/batches', methods=['GET'])
+def get_batches():
+    sql = """ 
+    SELECT DISTINCT SUBSTR(student_id, 1, 2) AS batch
+    FROM STUDENTS
+    WHERE hall_id = %s
+    """
+    batches = execute_read_query(sql, (CURRENT_HALL_ID,))
+    return jsonify(batches)
+
+
+
+
+
 
 # --- 3) MY PAYMENTS (Salary) ---
 @staff_bp.route('/my-payments', methods=['GET'])
