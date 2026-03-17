@@ -34,14 +34,17 @@ CREATE TABLE STUDENTS --3
 CREATE TABLE VISITORS( --4
     visitor_id    VARCHAR(12) PRIMARY KEY,  -- YYYYMMDD-XXX
     student_id    CHAR(7)     NOT NULL,
-    name          VARCHAR(100),
-    phone_number  VARCHAR(15),
-    relationship  VARCHAR(20),
-    entry_time    TIMESTAMP,
-    exit_time     TIMESTAMP,
+    name          VARCHAR(100) NOT NULL,
+    phone_number  VARCHAR(15) NOT NULL,
+    relationship  VARCHAR(20) NOT NULL,
+    entry_time    TIMESTAMP NOT NULL,
+    exit_time     TIMESTAMP NOT NULL,
+    hidden_by_student BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (student_id)
         REFERENCES STUDENTS(student_id)
         ON DELETE CASCADE
+
+    CONSTRAINT check_visitor_times CHECK (entry_time < exit_time)
 );
 
 CREATE TYPE c_type AS ENUM('Students', 'Staffs', 'Food', 'Facilities','Others'); --complaint on
@@ -193,6 +196,10 @@ CREATE TABLE ASKS_FOR(
     FOREIGN KEY(donation_id) REFERENCES DONATIONS(donation_id),
     FOREIGN KEY(student_id) REFERENCES STUDENTS(student_id),
     FOREIGN KEY(staff_id) REFERENCES STAFFS(staff_id)
+
+    CONSTRAINT at_least_one_requester CHECK (
+        (student_id IS NOT NULL) OR (staff_id IS NOT NULL)
+    )
 );
 
 

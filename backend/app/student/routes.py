@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.db import execute_read_query, execute_write_query
+from datetime import datetime
+import random
 
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
@@ -44,6 +46,8 @@ def pay_fee(payment_id):
     if success:
         return jsonify({"message": "Payment successful"})
     return jsonify({"error": "Payment failed"}), 400
+
+
 
 # --- 3) DONATIONS ---
 
@@ -144,29 +148,90 @@ def pledge_donation(donation_id):
         
     return jsonify({"error": "Pledge failed"}), 500
 
+
+
 # --- 4) NOTICES ---
 @student_bp.route('/notices', methods=['GET'])
 def get_notices():
     sql = "SELECT title, description, created_at FROM NOTICE ORDER BY created_at DESC"
     return jsonify(execute_read_query(sql))
 
+
+
 # --- 5) VISITORS ---
+@student_bp.route('/visitors', methods=['GET'])
+def get_visitors():
+    sql = """
+        SELECT visitor_id as id, name, phone_number as phone, relationship, 
+               TO_CHAR(entry_time, 'YYYY-MM-DD HH12:MI AM') as entry_time,
+               TO_CHAR(exit_time, 'YYYY-MM-DD HH12:MI AM') as exit_time,
+               entry_time as raw_entry
+        FROM VISITORS 
+        WHERE student_id = %s AND hidden_by_student = FALSE
+        ORDER BY raw_entry DESC
+    """
+    visitors = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    return jsonify(visitors if visitors else []), 200
+
 @student_bp.route('/visitors', methods=['POST'])
 def add_visitor():
     data = request.get_json()
-    # visitor_id format example: 20240520-001
-    v_id = data.get('visitor_id') 
-    name = data.get('name')
-    rel = data.get('relationship')
-
+    
+    required_fields = ['name', 'phone', 'relationship', 'entry_time', 'exit_time']
+    for field in required_fields:
+        if not data.get(field) or str(data.get(field)).strip() == "":
+            return jsonify({"error": f"Field '{field}' is required"}), 400
+    
+    if data['entry_time'] >= data['exit_time']:
+        return jsonify({"error": "Entry time must be before exit time"}), 400
+    
+    # 1. Generate the visitor_id (Format: YYYYMMDD-XXX)
+    date_str = datetime.now().strftime('%Y%m%d')
+    random_suffix = str(random.randint(100, 999))
+    visitor_id = f"{date_str}-{random_suffix}"
+    
+    # 2. Clean up empty strings from the frontend 
+    # (If the user leaves 'phone' or 'exit_time' blank, make sure Python sends NULL to the DB)
+    phone = data.get('phone') if data.get('phone') else None
+    exit_time = data.get('exit_time') if data.get('exit_time') else None
+    entry_time = data.get('entry_time') if data.get('entry_time') else None
+    
+    # 3. Insert into the database
     sql = """
-        INSERT INTO VISITORS (visitor_id, student_id, name, relationship, entry_time)
-        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        INSERT INTO VISITORS (visitor_id, student_id, name, phone_number, relationship, entry_time, exit_time)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
-    success = execute_write_query(sql, (v_id, CURRENT_STUDENT_ID, name, rel))
+    
+    success = execute_write_query(sql, (
+        visitor_id, 
+        CURRENT_STUDENT_ID, 
+        data.get('name'), 
+        phone, 
+        data.get('relationship'), 
+        entry_time, 
+        exit_time
+    ))
+    
     if success:
-        return jsonify({"message": "Visitor registered"}), 201
+        return jsonify({"message": "Visitor expected", "id": visitor_id}), 201
+        
     return jsonify({"error": "Failed to add visitor"}), 400
+
+@student_bp.route('/visitors/<visitor_id>/hide', methods=['PUT'])
+def hide_visitor(visitor_id):
+    # Soft delete a specific visitor
+    sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE visitor_id = %s AND student_id = %s"
+    execute_write_query(sql, (visitor_id, CURRENT_STUDENT_ID))
+    return jsonify({"message": "Visitor hidden from log"}), 200
+
+@student_bp.route('/visitors/clear', methods=['PUT'])
+def clear_visitors():
+    # Soft delete ALL visitors for this student
+    sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE student_id = %s"
+    execute_write_query(sql, (CURRENT_STUDENT_ID,))
+    return jsonify({"message": "Visitor log cleared"}), 200
+
+
 
 # --- 6) COMPLAINTS ---
 @student_bp.route('/complaints', methods=['GET', 'POST'])
@@ -192,6 +257,9 @@ def remove_complaint(complaint_id):
     if success:
         return jsonify({"message": "Complaint removed"})
     return jsonify({"error": "Not found or unauthorized"}), 404
+
+
+
 
 # --- 7) SEAT APPLICATION (Residency) ---
 @student_bp.route('/apply-seat', methods=['POST'])
