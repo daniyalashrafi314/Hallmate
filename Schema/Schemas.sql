@@ -226,7 +226,13 @@ CREATE TABLE NOTICE ( --18
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
+CREATE TABLE STUDENT_NOTICE_STATES (
+    student_id CHAR(7) REFERENCES STUDENTS(student_id) ON DELETE CASCADE,
+    notice_id  INT     REFERENCES NOTICE(notice_id) ON DELETE CASCADE,
+    is_read    BOOLEAN DEFAULT FALSE,
+    is_hidden  BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (student_id, notice_id)
+);
 
 
 

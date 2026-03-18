@@ -1,7 +1,7 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from app.db import execute_read_query, execute_write_query
 from datetime import datetime
-import random
+import random, io
 
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
@@ -151,10 +151,68 @@ def pledge_donation(donation_id):
 
 
 # --- 4) NOTICES ---
+
 @student_bp.route('/notices', methods=['GET'])
 def get_notices():
-    sql = "SELECT title, description, created_at FROM NOTICE ORDER BY created_at DESC"
-    return jsonify(execute_read_query(sql))
+    
+    sql = """
+        SELECT 
+            n.notice_id as id, 
+            s.name as author, 
+            n.title, 
+            n.description,
+            TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as date,
+            (n.pdf_file IS NOT NULL) as "hasAttachment",
+            COALESCE(sns.is_read, FALSE) as is_read
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        LEFT JOIN STUDENT_NOTICE_STATES sns 
+            ON n.notice_id = sns.notice_id AND sns.student_id = %s
+        WHERE sns.is_hidden IS NOT TRUE
+        ORDER BY n.created_at DESC;
+    """
+    notices = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    return jsonify(notices if notices else []), 200
+
+@student_bp.route('/notices/<int:notice_id>/read', methods=['PUT'])
+def mark_notice_read(notice_id):
+    # UPSERT: Insert the read state. If a row already exists, update it.
+    sql = """
+        INSERT INTO STUDENT_NOTICE_STATES (student_id, notice_id, is_read)
+        VALUES (%s, %s, TRUE)
+        ON CONFLICT (student_id, notice_id)
+        DO UPDATE SET is_read = TRUE;
+    """
+    execute_write_query(sql, (CURRENT_STUDENT_ID, notice_id))
+    return jsonify({"message": "Marked as read"}), 200
+
+@student_bp.route('/notices/<int:notice_id>/hide', methods=['PUT'])
+def hide_notice(notice_id):
+    sql = """
+        INSERT INTO STUDENT_NOTICE_STATES (student_id, notice_id, is_hidden)
+        VALUES (%s, %s, TRUE)
+        ON CONFLICT (student_id, notice_id)
+        DO UPDATE SET is_hidden = TRUE;
+    """
+    execute_write_query(sql, (CURRENT_STUDENT_ID, notice_id))
+    return jsonify({"message": "Notice hidden"}), 200
+
+@student_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
+def download_notice_pdf(notice_id):
+    sql = "SELECT pdf_file, title FROM NOTICE WHERE notice_id = %s"
+    result = execute_read_query(sql, (notice_id,))
+    
+    if result and result[0]['pdf_file']:
+        pdf_data = result[0]['pdf_file']
+        title = result[0]['title'].replace(' ', '_')
+        # Send the raw byte data back as a downloadable PDF file
+        return send_file(
+            io.BytesIO(pdf_data),
+            download_name=f"{title}.pdf",
+            mimetype='application/pdf',
+            as_attachment=True
+        )
+    return jsonify({"error": "PDF not found"}), 404
 
 
 
@@ -280,6 +338,7 @@ def remove_complaint(complaint_id):
 
 
 # --- 7) SEAT APPLICATION (Residency) ---
+
 @student_bp.route('/apply-seat', methods=['POST'])
 def apply_seat():
     data = request.get_json()
