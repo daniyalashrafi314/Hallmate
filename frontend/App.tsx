@@ -13,6 +13,7 @@ import StudentPayments from './pages/Student/StudentPayments';
 import StudentVisitors from './pages/Student/StudentVisitors';
 import StudentNotices from './pages/Student/StudentNotices';
 import StudentDonations from './pages/Student/StudentDonations';
+import StudentComplaints from './pages/Student/StudentComplaints';
 
 import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
 import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
@@ -61,6 +62,7 @@ const App: React.FC = () => {
                 <Route path="/visitors" element={<StudentVisitors />} />
                 <Route path="/notices" element={<StudentNotices />} />
                 <Route path="/donations" element={<StudentDonations />} />
+                <Route path="/complaints" element={<StudentComplaints />} />
 
                 {/* Staff Routes */}
                 <Route path="/dashboard" element={<StaffVisitorLogs />} />

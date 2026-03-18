@@ -234,30 +234,48 @@ def clear_visitors():
 
 
 # --- 6) COMPLAINTS ---
-@student_bp.route('/complaints', methods=['GET', 'POST'])
-def manage_complaints():
-    if request.method == 'GET':
-        sql = "SELECT * FROM COMPLAINTS WHERE student_id = %s"
-        return jsonify(execute_read_query(sql, (CURRENT_STUDENT_ID,)))
 
-    if request.method == 'POST':
-        data = request.get_json()
-        c_type = data.get('complaint_type') # e.g., 'Food'
-        desc = data.get('description')
+@student_bp.route('/complaints', methods=['GET'])
+def get_complaints():
+    sql = """
+        SELECT complaint_id as id, complaint_type as type, description, 
+               status, TO_CHAR(date, 'YYYY-MM-DD') as date, is_anonymous
+        FROM COMPLAINTS 
+        WHERE student_id = %s 
+        ORDER BY complaint_id DESC
+    """
+    complaints = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    return jsonify(complaints if complaints else []), 200
+
+@student_bp.route('/complaints', methods=['POST'])
+def add_complaint():
+    data = request.get_json()
+    c_type = data.get('type')
+    desc = data.get('description')
+    is_anon = data.get('is_anonymous', False)
+    
+    if not c_type or not desc:
+        return jsonify({"error": "Type and description are required"}), 400
         
-        sql = "INSERT INTO COMPLAINTS (student_id, complaint_type, description) VALUES (%s, %s, %s)"
-        execute_write_query(sql, (CURRENT_STUDENT_ID, c_type, desc))
-        return jsonify({"message": "Complaint filed"}), 201
+    sql = """
+        INSERT INTO COMPLAINTS (student_id, complaint_type, description, is_anonymous) 
+        VALUES (%s, %s, %s, %s)
+    """
+    success = execute_write_query(sql, (CURRENT_STUDENT_ID, c_type, desc, is_anon))
+    
+    if success:
+        return jsonify({"message": "Complaint filed successfully"}), 201
+    return jsonify({"error": "Failed to file complaint"}), 500
 
 @student_bp.route('/complaints/<int:complaint_id>', methods=['DELETE'])
 def remove_complaint(complaint_id):
-    # We add student_id to WHERE so students can't delete others' complaints
-    sql = "DELETE FROM COMPLAINTS WHERE complaint_id = %s AND student_id = %s"
+    # Only allow deletion if the complaint belongs to the student AND is still 'Pending'
+    sql = "DELETE FROM COMPLAINTS WHERE complaint_id = %s AND student_id = %s AND status = 'Pending'"
     success = execute_write_query(sql, (complaint_id, CURRENT_STUDENT_ID))
+    
     if success:
-        return jsonify({"message": "Complaint removed"})
-    return jsonify({"error": "Not found or unauthorized"}), 404
-
+        return jsonify({"message": "Complaint removed"}), 200
+    return jsonify({"error": "Cannot delete this complaint (it may already be processed)"}), 400
 
 
 

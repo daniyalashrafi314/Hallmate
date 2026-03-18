@@ -47,7 +47,7 @@ CREATE TABLE VISITORS( --4
     CONSTRAINT check_visitor_times CHECK (entry_time < exit_time)
 );
 
-CREATE TYPE c_type AS ENUM('Students', 'Staffs', 'Food', 'Facilities','Others'); --complaint on
+CREATE TYPE c_type AS ENUM('Room', 'Dining', 'Toilet', 'Roommate','Staff', 'Facilities', 'Other'); --complaint on
 
 CREATE TYPE complaint_status AS ENUM('Pending', 'Approved', 'Refused');
 
