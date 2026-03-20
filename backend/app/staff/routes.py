@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from app.db import execute_read_query, execute_write_query
 
 # 1. Define the Blueprint
@@ -115,27 +115,126 @@ def change_password():
 
 
 # --- 2) NOTICE PAGE (View & Create) ---
-@staff_bp.route('/notices', methods=['GET', 'POST'])
-def manage_notices():
-    if request.method == 'GET':
-        sql = "SELECT * FROM NOTICE ORDER BY created_at DESC"
-        notices = execute_read_query(sql)
-        return jsonify(notices)
 
-    if request.method == 'POST':
-        data = request.get_json()
-        title = data.get('title')
-        description = data.get('description')
+@staff_bp.route('/notices', methods=['GET'])
+def get_notices():
+    
+    
+    try:
+        limit = min(int(request.args.get('limit', 10)), 50)
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+    sql = """
+        SELECT n.notice_id, n.title, n.description, n.created_at
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+        ORDER BY n.created_at DESC
+        LIMIT %s OFFSET %s;
+    """
+    notices = execute_read_query(sql, (CURRENT_HALL_ID, limit, offset))
+    return jsonify({"data": notices}), 200
+
+@staff_bp.route('/notices/<int:notice_id>', methods=['GET'])
+def get_notice(notice_id):
+    sql = """
+        SELECT n.notice_id, n.title, n.description, n.created_at, s.staff_id, s.name, (n.pdf_file IS NOT NULL) AS has_pdf
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        WHERE n.notice_id = %s
+        AND s.hall_id = %s
         
-        sql = """
-            INSERT INTO NOTICE (staff_id, title, description)
-            VALUES (%s, %s, %s)
+    """
+    notice = execute_read_query(sql, (notice_id, CURRENT_HALL_ID))
+    if not notice:
+        return jsonify({"error": "Not Found"}), 404
+    return jsonify(notice[0]),200
+@staff_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
+def get_notice_pdf(notice_id):
+    sql = """
+        SELECT n.pdf_file
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        WHERE n.notice_id = %s
+        AND s.hall_id = %s
+        
         """
-        success = execute_write_query(sql, (CURRENT_STAFF_ID, title, description))
-        
-        if success:
-            return jsonify({"message": "Notice published successfully"}), 201
-        return jsonify({"error": "Failed to publish notice"}), 500
+    result = execute_read_query(sql, (notice_id, CURRENT_HALL_ID))
+    if not result or not result[0].get('pdf_file'):
+        return jsonify({"error": "No Pdf"}), 404
+    return Response(
+        result[0]['pdf_file'],
+        mimetype='application/pdf',
+        headers={"Content-Disposition": "inline; filename=notice.pdf"}
+    )
+
+
+
+@staff_bp.route('/notices', methods=['POST'])
+def create_notice():
+    staff_id = CURRENT_STAFF_ID
+
+    title = request.form.get('title')
+    description = request.form.get('description')
+    pdf_file = request.files.get('pdf_file')
+
+    pdf_bytes = None
+    if pdf_file:
+        pdf_bytes = pdf_file.read()
+    if not title or title.strip() == "":
+        return jsonify({"error": "Title is required"}), 400
+
+    if len(title) > 150:
+        return jsonify({"error": "Title too long"}), 400
+    if pdf_file and not pdf_file.filename.endswith('.pdf'):
+        return jsonify({"error": "Only PDF allowed"}), 400
+
+    query = """
+        INSERT INTO NOTICE (staff_id, title, description, pdf_file)
+        VALUES (%s, %s, %s, %s)
+        RETURNING notice_id;
+    """
+
+    values = (staff_id, title, description, pdf_bytes)
+    result = execute_write_query(query, values)
+
+    return jsonify({"notice_id": result}), 201
+@staff_bp.route('/notices/<int:notice_id>', methods=['DELETE'])
+def delete_notice(notice_id):
+    
+    query = """
+        DELETE FROM NOTICE n
+        USING STAFFS s
+        WHERE n.staff_id = s.staff_id
+        AND n.notice_id = %s
+        AND s.hall_id = %s
+        RETURNING n.notice_id;
+    """
+
+    result = execute_write_query(query, (notice_id, CURRENT_HALL_ID))
+
+    if not result:
+        return jsonify({"error": "Unauthorized or not found"}), 403
+
+    return jsonify({"message": "Deleted"}), 200
+
+@staff_bp.route('/notices/count', methods=['GET'])
+def get_notice_count():
+    
+    search = request.args.get('search', '')
+
+    query = """
+        SELECT COUNT(*) as total
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+        AND (n.title ILIKE %s OR n.description ILIKE %s);
+    """
+
+    result = execute_read_query(query, (CURRENT_HALL_ID, f"%{search}%", f"%{search}%"))
+
+    return jsonify(result[0]), 200
 
 # ---3) ADD PAYMENTS (STUDENTS)
 
