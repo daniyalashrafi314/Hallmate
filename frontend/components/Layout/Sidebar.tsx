@@ -33,9 +33,9 @@ const Sidebar: React.FC = () => {
       { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/dashboard', label: 'Visitor Logs', icon: Users },
       { to: '/visitor-logs', label: 'Visitor Logs', icon: Users },
+      { to: '/notices-manage', label: 'Notices', icon: FileText },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
       { to: '/add-payments', label: 'Add Payments', icon: CreditCard },
-      { to: '/notices-manage', label: 'Post Notice', icon: FileText },
     ],
     [UserRole.PROVOST]: [
       { to: '/users', label: 'User Management', icon: Users },

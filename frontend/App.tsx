@@ -19,6 +19,7 @@ import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
 import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
 import StaffProfile from './pages/Staff/StaffProfile';
 import StaffAddPayments from './pages/Staff/StaffAddPayments';
+import StaffNotices from './pages/Staff/StaffNotices';
 
 import ProvostRoomGrid from './pages/Provost/ProvostRoomGrid';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
@@ -70,6 +71,7 @@ const App: React.FC = () => {
                 <Route path="/request-payment" element={<StaffPaymentRequest />} />
                 <Route path="/add-payments" element={<StaffAddPayments />} />
                 <Route path="/profile" element={<StaffProfile />} />
+                <Route path="/notices-manage" element={<StaffNotices />} />
 
                 {/* Provost Routes */}
                 <Route path="/room-grid" element={<ProvostRoomGrid />} />
