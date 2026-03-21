@@ -14,6 +14,7 @@ CURRENT_HALL_ID = 1
 #Few issues that will be fixed later, there is a search bar in profile page which is not necessary
 #Notification does not work
 #Name in the lower section of the sidebar is still not connected to db
+#The photo section is missing and needs to be fixed
 
 @staff_bp.route('/profile', methods=['GET'])
 def get_profile():
@@ -339,23 +340,84 @@ def get_batches():
     batches = execute_read_query(sql, (CURRENT_HALL_ID,))
     return jsonify(batches)
 
-
-
-
-
-
 # --- 3) MY PAYMENTS (Salary) ---
-@staff_bp.route('/my-payments', methods=['GET'])
-def get_my_payments():
-    # See salary payments specifically linked to this staff member
+
+# --- SALARY PAGES ---
+
+@staff_bp.route('/salary', methods=['GET'])
+def get_paginated_salary():
+    
+    try:
+        limit = min(int(request.args.get('limit', 10)), 50)  # Max 50 per page
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination parameters"}), 400
+
     sql = """
-        SELECT p.payment_id, p.amount, p.status, p.paid_at, p.due_time
+        SELECT 
+            p.payment_id, 
+            p.payment_type, 
+            p.amount, 
+            p.status, 
+            p.due_time, 
+            p.paid_at
+        FROM PAYMENTS p
+        JOIN SALARY s ON p.payment_id = s.payment_id
+        WHERE s.staff_id = %s
+        ORDER BY p.due_time DESC NULLS LAST
+        LIMIT %s OFFSET %s;
+    """
+    salaries = execute_read_query(sql, (CURRENT_STAFF_ID, limit, offset))
+    
+    # Optionally, you can also return a total count for frontend pagination controls
+    count_sql = """
+        SELECT COUNT(*) as total
         FROM PAYMENTS p
         JOIN SALARY s ON p.payment_id = s.payment_id
         WHERE s.staff_id = %s
     """
-    payments = execute_read_query(sql, (CURRENT_STAFF_ID,))
-    return jsonify(payments)
+    total_count = execute_read_query(count_sql, (CURRENT_STAFF_ID,))
+    total = total_count[0]['total'] if total_count else 0
+
+    return jsonify({
+        "data": salaries,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "total": total
+        }
+    }), 200
+
+
+@staff_bp.route('/salary/<int:payment_id>', methods=['GET'])
+def get_salary_details(payment_id):
+   
+    sql = """
+        SELECT 
+            p.payment_id, 
+            p.payment_type, 
+            p.amount AS payment_amount, 
+            p.status, 
+            p.due_time, 
+            p.paid_at,
+            st.staff_id,
+            st.name AS staff_name,
+            st.role AS staff_role,
+            st.salary AS base_salary
+        FROM PAYMENTS p
+        JOIN SALARY s ON p.payment_id = s.payment_id
+        JOIN STAFFS st ON s.staff_id = st.staff_id
+        WHERE p.payment_id = %s 
+        AND s.staff_id = %s;
+    """
+    
+    # Pass CURRENT_STAFF_ID to prevent IDOR (Insecure Direct Object Reference)
+    salary_detail = execute_read_query(sql, (payment_id, CURRENT_STAFF_ID))
+
+    if not salary_detail:
+        return jsonify({"error": "Salary payment not found or unauthorized access"}), 404
+
+    return jsonify(salary_detail[0]), 200
 
 # --- 4) ASK FOR DONATIONS ---
 @staff_bp.route('/donations', methods=['POST'])
