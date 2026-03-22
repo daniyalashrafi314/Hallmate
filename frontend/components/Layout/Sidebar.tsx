@@ -11,7 +11,8 @@ import {
   Calendar,
   Layers,
   LogOut,
-  UserCircle
+  UserCircle,
+  ClipboardList
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { UserRole } from '../../types';
@@ -31,9 +32,9 @@ const Sidebar: React.FC = () => {
     ],
     [UserRole.STAFF]: [
       { to: '/profile', label: 'My Profile', icon: UserCircle },
-      { to: '/dashboard', label: 'Visitor Logs', icon: Users },
       { to: '/visitor-logs', label: 'Visitor Logs', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
+      { to: '/seat-applications', label: 'Seat Applications', icon: ClipboardList },
       { to: '/salary', label: 'Salary', icon: CreditCard },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
       { to: '/add-payments', label: 'Add Payments', icon: CreditCard },
@@ -47,6 +48,31 @@ const Sidebar: React.FC = () => {
 
   return (
     <aside className={`fixed top-0 left-0 h-full w-64 ${theme.primary} text-white z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300`}>
+      <style>{`
+        aside nav {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.05);
+        }
+        
+        aside nav::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        aside nav::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
+        
+        aside nav::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.3);
+          border-radius: 10px;
+          transition: background 0.2s;
+        }
+        
+        aside nav::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.5);
+        }
+      `}</style>
       <div className="p-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <ShieldCheck className="w-8 h-8" />
@@ -57,7 +83,7 @@ const Sidebar: React.FC = () => {
         </p>
       </div>
 
-      <nav className="mt-8 px-4 space-y-2">
+      <nav className="mt-8 px-4 space-y-2 overflow-y-auto max-h-[calc(100vh-300px)]">
         {navItems[userRole].map((item) => (
           <NavLink
             key={item.to}

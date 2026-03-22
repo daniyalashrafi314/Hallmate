@@ -133,7 +133,7 @@ CREATE TABLE STAFFS( --10
         REFERENCES USERS(user_id)
     
 );
-CREATE TYPE payment_status AS ENUM ('Due', 'Paid', 'Overdue');
+
 
 CREATE  TABLE PAYMENTS( --11
     payment_id  SERIAL PRIMARY KEY,
