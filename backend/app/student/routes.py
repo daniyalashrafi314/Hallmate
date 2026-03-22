@@ -26,26 +26,50 @@ def get_profile():
         return jsonify(profile[0])
     return jsonify({"error": "Student not found"}), 404
 
+
+
 # --- 2) PAYMENTS (Fees) ---
+
 @student_bp.route('/payments', methods=['GET'])
 def get_payments():
-    # Shows all fees (Mess, Tuition, etc.) assigned to this student
+    # Join PAYMENTS and FEES, and use a CASE statement to custom sort the statuses
     sql = """
-        SELECT p.* FROM PAYMENTS p
+        SELECT 
+            p.payment_id as id, 
+            p.payment_type as title, 
+            p.amount, 
+            TO_CHAR(p.due_time, 'YYYY-MM-DD"T"HH24:MI:SS') as "dueDate",
+            p.status,
+            TO_CHAR(p.paid_at, 'YYYY-MM-DD"T"HH24:MI:SS') as "paidAt"
+        FROM PAYMENTS p
         JOIN FEES f ON p.payment_id = f.payment_id
         WHERE f.student_id = %s
-        ORDER BY p.due_time DESC
+        ORDER BY 
+            CASE p.status
+                WHEN 'Overdue' THEN 1
+                WHEN 'Due' THEN 2
+                WHEN 'Paid' THEN 3
+                ELSE 4
+            END,
+            p.due_time ASC;
     """
-    return jsonify(execute_read_query(sql, (CURRENT_STUDENT_ID,)))
+    payments = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    return jsonify(payments if payments else []), 200
 
-@student_bp.route('/payments/<int:payment_id>/pay', methods=['POST'])
-def pay_fee(payment_id):
-    # Simulates paying a bill
-    sql = "UPDATE PAYMENTS SET status = 'Paid', paid_at = CURRENT_TIMESTAMP WHERE payment_id = %s"
-    success = execute_write_query(sql, (payment_id,))
+@student_bp.route('/payments/<int:payment_id>/pay', methods=['PUT'])
+def process_payment(payment_id):
+    # Verify the fee actually belongs to the student before marking it as paid
+    sql = """
+        UPDATE PAYMENTS 
+        SET status = 'Paid', paid_at = CURRENT_TIMESTAMP
+        WHERE payment_id = %s 
+          AND payment_id IN (SELECT payment_id FROM FEES WHERE student_id = %s)
+    """
+    success = execute_write_query(sql, (payment_id, CURRENT_STUDENT_ID))
+    
     if success:
-        return jsonify({"message": "Payment successful"})
-    return jsonify({"error": "Payment failed"}), 400
+        return jsonify({"message": "Payment successful"}), 200
+    return jsonify({"error": "Payment failed or unauthorized"}), 400
 
 
 
