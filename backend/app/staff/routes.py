@@ -517,31 +517,132 @@ def manage_events():
         return jsonify({"error": "Failed"}), 500
 
 
-# --- 7) REVIEW SEAT APPLICATIONS ---
+# --- 7) SEAT APPLICATIONS (Paginated & Details) ---
+
 @staff_bp.route('/seat-applications', methods=['GET'])
-def get_applications():
-    # Join with Students to show names
+def get_paginated_applications():
+    try:
+        search = request.args.get("search")
+        limit = min(int(request.args.get('limit', 10)), 50)
+        offset = int(request.args.get('offset', 0))
+        status_filter = request.args.get('status', 'Pending') # Default to pending applications
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+   
     sql = """
-        SELECT sa.*, s.name as student_name 
+        SELECT 
+            sa.application_id, 
+            sa.student_id, 
+            s.name AS student_name, 
+            sa.date, 
+            sa.priority_value, 
+            sa.status
         FROM SEAT_APPLICATION sa
         JOIN STUDENTS s ON sa.student_id = s.student_id
-        WHERE sa.status = 'Pending'
+        WHERE s.hall_id = %s AND sa.status = %s
     """
-    return jsonify(execute_read_query(sql))
+    
+    params = [CURRENT_HALL_ID, status_filter]
+
+    if search:
+        sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        params.append(f"%{search}%")
+        params.append(f"%{search}%")
+
+   
+    sql += """ 
+        ORDER BY sa.priority_value DESC NULLS LAST, sa.date ASC
+        LIMIT %s OFFSET %s;
+    """
+    count_params = list(params) 
+    params.extend([limit, offset])
+    
+    applications = execute_read_query(sql, tuple(params))
+    
+   
+    count_sql = """
+        SELECT COUNT(*) as total
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE s.hall_id = %s AND sa.status = %s
+    """
+    if search:
+        
+        count_sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+
+   
+    total_count = execute_read_query(count_sql, tuple(count_params))
+    total = total_count[0]['total'] if total_count else 0
+
+    return jsonify({
+        "data": applications,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "total": total
+        }
+    }), 200
+
+@staff_bp.route('/seat-applications/<int:app_id>', methods=['GET'])
+def get_application_details(app_id):
+    """
+    Get all details for a single application, including student info.
+    """
+    sql = """
+        SELECT 
+            sa.application_id, 
+            sa.student_id, 
+            sa.description, 
+            sa.date, 
+            sa.priority_value, 
+            sa.status AS application_status,
+            s.name AS student_name, 
+            s.phone_number, 
+            s.status AS student_status
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE sa.application_id = %s AND s.hall_id = %s;
+    """
+    app_details = execute_read_query(sql, (app_id, CURRENT_HALL_ID))
+    
+    if not app_details:
+        return jsonify({"error": "Application not found or unauthorized access"}), 404
+        
+    return jsonify(app_details[0]), 200
 
 
 @staff_bp.route('/seat-applications/<int:app_id>/priority', methods=['PUT'])
-def set_priority(app_id):
+def update_application_priority(app_id):
+    """
+    Update the priority value of a specific seat application.
+    """
     data = request.get_json()
     new_priority = data.get('priority_value')
     
-    sql = "UPDATE SEAT_APPLICATION SET priority_value = %s WHERE application_id = %s"
-    success = execute_write_query(sql, (new_priority, app_id))
+    if new_priority is None:
+        return jsonify({"error": "Missing priority_value in request body"}), 400
+        
+    # Security check: Ensure the application belongs to a student in this staff's hall
+    check_sql = """
+        SELECT sa.application_id 
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE sa.application_id = %s AND s.hall_id = %s;
+    """
+    if not execute_read_query(check_sql, (app_id, CURRENT_HALL_ID)):
+        return jsonify({"error": "Application not found or unauthorized access"}), 404
+
+    update_sql = "UPDATE SEAT_APPLICATION SET priority_value = %s WHERE application_id = %s"
+    success = execute_write_query(update_sql, (new_priority, app_id))
     
     if success:
-        return jsonify({"message": "Priority updated"})
-    return jsonify({"error": "Failed"}), 400
-
+        return jsonify({
+            "message": "Priority updated successfully", 
+            "priority_value": new_priority
+        }), 200
+        
+    return jsonify({"error": "Failed to update priority"}), 500
 
 # --- 8) STUDENT LIST & SEARCH ---
 @staff_bp.route('/students', methods=['GET'])
