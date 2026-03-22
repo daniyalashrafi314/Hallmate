@@ -361,20 +361,101 @@ def remove_complaint(complaint_id):
 
 
 
-# --- 7) SEAT APPLICATION (Residency) ---
+# --- 7) SEAT APPLICATION ---
 
-@student_bp.route('/apply-seat', methods=['POST'])
-def apply_seat():
-    data = request.get_json()
-    desc = data.get('description')
+from flask import request, jsonify
+
+# --- HELPER FUNCTIONS & CONSTANTS ---
+DEPARTMENT_CODES = {
+    '05': 'Computer Science & Engineering (CSE)',
+    '42': 'Electrical & Electronic Engineering (EEE)',
+    '01': 'Architecture (ARC)',
+    '02': 'Chemical Engineering (CHE)',
+    '03': 'Civil Engineering (CIV)',
+    '04': 'Mechanical Engineering (MEC)',
+    '06': 'Materials & Metallurgical Eng. (MME)',
+    '07': 'Naval Arch. & Marine Eng. (NAME)',
+    '08': 'Industrial & Production Eng. (IPE)',
+    '09': 'Water Resources Engineering (WRE)',
+    '10': 'Urban & Regional Planning (URP)',
+    '11': 'Biomedical Engineering (BME)'
+}
+
+def derive_batch_year(student_id):
+    if student_id and len(student_id) >= 2 and student_id[:2].isdigit():
+        return f"20{student_id[:2]}"
+    return "Unknown"
+
+def derive_department(student_id):
+    if student_id and len(student_id) >= 4:
+        code = student_id[2:4]
+        return DEPARTMENT_CODES.get(code, f"Unknown Code ({code})")
+    return "Unknown"
+
+@student_bp.route('/seat-application/status', methods=['GET'])
+def get_application_status():
+    # 1. Fetch current application status
+    app_sql = "SELECT status, description FROM SEAT_APPLICATION WHERE student_id = %s ORDER BY date DESC LIMIT 1"
+    application = execute_read_query(app_sql, (CURRENT_STUDENT_ID,))
     
-    # Check if they already have a pending application
-    check_sql = "SELECT * FROM SEAT_APPLICATION WHERE student_id = %s AND status = 'Pending'"
-    if execute_read_query(check_sql, (CURRENT_STUDENT_ID,)):
-        return jsonify({"error": "You already have a pending application"}), 400
+    # 2. Fetch student profile details
+    stu_sql = "SELECT name, phone_number FROM STUDENTS WHERE student_id = %s"
+    student = execute_read_query(stu_sql, (CURRENT_STUDENT_ID,))
+    
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+        
+    stu_data = student[0]
+    
+    # Bundle the profile with the derived data
+    profile = {
+        "student_id": CURRENT_STUDENT_ID,
+        "name": stu_data['name'],
+        "phone": stu_data['phone_number'] or "",
+        "batch_year": derive_batch_year(CURRENT_STUDENT_ID),
+        "department": derive_department(CURRENT_STUDENT_ID)
+    }
 
-    sql = "INSERT INTO SEAT_APPLICATION (student_id, description) VALUES (%s, %s)"
-    success = execute_write_query(sql, (CURRENT_STUDENT_ID, desc))
+    # Determine status (None, Pending, Approved, Refused)
+    app_status = application[0]['status'] if application else 'None'
+    description = application[0]['description'] if application else ''
+    
+    return jsonify({
+        "status": app_status,
+        "reasoning": description,
+        "profile": profile
+    }), 200
+
+@student_bp.route('/seat-application', methods=['POST'])
+def submit_application():
+    data = request.get_json()
+    reasoning = data.get('reasoning')
+    phone = data.get('phone')
+    # dept = data.get('department') # Note: No column in DB to save this currently
+    
+    if not reasoning:
+        return jsonify({"error": "Reasoning is required"}), 400
+
+    # Optional: Update the student's phone number if they changed it in the wizard
+    if phone:
+        execute_write_query("UPDATE STUDENTS SET phone_number = %s WHERE student_id = %s", (phone, CURRENT_STUDENT_ID))
+        
+    sql = """
+        INSERT INTO SEAT_APPLICATION (student_id, description, status) 
+        VALUES (%s, %s, 'Pending')
+    """
+    success = execute_write_query(sql, (CURRENT_STUDENT_ID, reasoning))
+    
     if success:
         return jsonify({"message": "Application submitted"}), 201
-    return jsonify({"error": "Submission failed"}), 500
+    return jsonify({"error": "Failed to submit"}), 500
+
+@student_bp.route('/seat-application/cancel', methods=['DELETE'])
+def cancel_application():
+    # Deletes the application (Used for both Canceling a pending one, or acknowledging a refused one)
+    sql = "DELETE FROM SEAT_APPLICATION WHERE student_id = %s AND status IN ('Pending', 'Refused')"
+    success = execute_write_query(sql, (CURRENT_STUDENT_ID,))
+    
+    if success:
+        return jsonify({"message": "Application cleared"}), 200
+    return jsonify({"error": "Could not clear application"}), 400
