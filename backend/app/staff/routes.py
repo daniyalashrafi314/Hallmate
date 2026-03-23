@@ -502,67 +502,10 @@ def delete_own_donation(donation_id):
     return jsonify({"error": "Unauthorized or donation already processed"}), 403
 
 
-# --- 5) ADD PAYMENTS TO STUDENTS (Bulk) ---
-@staff_bp.route('/assign-fees', methods=['POST'])
-def assign_fees():
-    data = request.get_json()
-    student_ids = data.get('student_ids') # Expected: ['2305108', '2305109']
-    amount = data.get('amount')
-    payment_type = data.get('type') # e.g., 'Mess Due'
-    due_date = data.get('due_date')
-
-    # Note: Bulk insert. In a real app, use a transaction block.
-    # Here, we iterate (simple but slower for thousands of records).
-    
-    success_count = 0
-    
-    for sid in student_ids:
-        # 1. Create Payment entry and get ID
-        sql_step1 = """
-            INSERT INTO PAYMENTS (payment_type, amount, due_time, status)
-            VALUES (%s, %s, %s, 'Due') RETURNING payment_id
-        """
-        result_step1 = execute_read_query(sql_step1, (payment_type, amount, due_date))
-        
-        if result_step1:
-            pid = result_step1[0]['payment_id']
-
-            # 2. Link to Student in FEES table
-            sql_step2 = """
-                INSERT INTO FEES (payment_id, student_id)
-                VALUES (%s, %s)
-            """
-            success_step2 = execute_write_query(sql_step2, (pid, sid))
-            if success_step2:
-                success_count += 1
-    
-    return jsonify({"message": f"Fees assigned to {success_count} students"}), 201
-
-# --- 6) EVENTS (Add/Delete/View) ---
-@staff_bp.route('/events', methods=['GET', 'POST'])
-def manage_events():
-    if request.method == 'GET':
-        sql = "SELECT * FROM EVENTS ORDER BY date"
-        return jsonify(execute_read_query(sql))
-
-    if request.method == 'POST':
-        data = request.get_json()
-        name = data.get('name')
-        description = data.get('description')
-        date = data.get('date')
-        hall_id = data.get('hall_id')
-        
-        sql = """
-            INSERT INTO EVENTS (name, description, date, hall_id) 
-            VALUES (%s, %s, %s, %s)
-        """
-        success = execute_write_query(sql, (name, description, date, hall_id))
-        if success:
-            return jsonify({"message": "Event created"}), 201
-        return jsonify({"error": "Failed"}), 500
 
 
-# --- 7) SEAT APPLICATIONS (Paginated & Details) ---
+
+# --- 6) SEAT APPLICATIONS (Paginated & Details) ---
 
 @staff_bp.route('/seat-applications', methods=['GET'])
 def get_paginated_applications():
@@ -690,35 +633,6 @@ def update_application_priority(app_id):
     return jsonify({"error": "Failed to update priority"}), 500
 
 # --- 8) STUDENT LIST & SEARCH ---
-@staff_bp.route('/students', methods=['GET'])
-def search_students():
-    # URL parameters: /students?query=ali&type=name
-    query_param = request.args.get('query', '')
-    search_type = request.args.get('type', 'name') # 'name', 'id', or 'room'
-
-    # Base query for all cases
-    base_sql = """
-        SELECT s.student_id, s.name, s.phone_number, s.status, a.room_id 
-        FROM STUDENTS s
-        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id
-    """
-    
-    sql_query = ""
-    params = ()
-    
-    if search_type == 'room':
-        sql_query = base_sql + " WHERE a.room_id = %s"
-        params = (query_param,)
-    elif search_type == 'id':
-        sql_query = base_sql + " WHERE s.student_id = %s"
-        params = (query_param,)
-    else:
-        # Default search by name (partial match, case-insensitive)
-        sql_query = base_sql + " WHERE s.name ILIKE %s"
-        params = (f"%{query_param}%",)
-
-    results = execute_read_query(sql_query, params)
-    return jsonify(results)
 # --- ADD STUDENT ENDPOINT ---
 @staff_bp.route('/add-students', methods=['POST'])
 def add_student():

@@ -3,6 +3,8 @@ from app.db import execute_read_query, execute_write_query
 
 admin_bp = Blueprint('admin', __name__)
 
+#All pages of th
+
 # --- 1) VIEW USERS (Students & Staff) ---
 @admin_bp.route('/students', methods=['GET'])
 def get_all_students():
