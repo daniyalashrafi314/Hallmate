@@ -1,5 +1,10 @@
 from flask import Blueprint, request, jsonify, Response
 from app.db import execute_read_query, execute_write_query
+from app.email_service import send_welcome_email
+from werkzeug.security import generate_password_hash
+import re
+import secrets
+import string
 
 # 1. Define the Blueprint
 # We define it here so other files (like your main app.py) can import it.
@@ -674,3 +679,68 @@ def search_students():
 
     results = execute_read_query(sql_query, params)
     return jsonify(results)
+# --- ADD STUDENT ENDPOINT ---
+@staff_bp.route('/add-students', methods=['POST'])
+def add_student():
+    """
+    Create a new student, generate their user account, and email them the credentials.
+    """
+    data = request.get_json()
+    student_id = data.get('student_id')
+    email_address = data.get('email_address')
+
+    # 1. Basic Validation
+    if not student_id or not email_address:
+        return jsonify({"error": "Missing student_id or email_address"}), 400
+
+    # Validate student_id is exactly 7 digits using Regex
+    if not re.fullmatch(r'^\d{7}$', str(student_id)):
+        return jsonify({"error": "Student ID must be exactly 7 digits."}), 400
+
+    # 2. Prepare Data
+    user_id = f"{student_id}@buet.ac.bd"
+    
+    # Generate a secure 10-character random password
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    raw_password = ''.join(secrets.choice(alphabet) for _ in range(10))
+    
+    # Hash the password before saving to DB (Security Best Practice)
+    hashed_password = generate_password_hash(raw_password)
+
+    # 3. Database Insertion (Manual Transaction Simulation)
+    
+    # First, insert into USERS
+    user_sql = """
+        INSERT INTO USERS (user_id, email_address, password)
+        VALUES (%s, %s, %s)
+    """
+    user_success = execute_write_query(user_sql, (user_id, email_address, hashed_password))
+    
+    if not user_success:
+        return jsonify({"error": "Failed to create user. ID or Email might already exist."}), 409
+
+    # Second, insert into STUDENTS (Default status: 'ATTACHED' per your ENUM schema)
+    student_sql = """
+        INSERT INTO STUDENTS (student_id, hall_id, user_id, status)
+        VALUES (%s, %s, %s, 'ATTACHED')
+    """
+    student_success = execute_write_query(student_sql, (student_id, CURRENT_HALL_ID, user_id))
+
+    if not student_success:
+        # Rollback: If student insert fails, delete the user we just created so we don't have orphaned data
+        execute_write_query("DELETE FROM USERS WHERE user_id = %s", (user_id,))
+        return jsonify({"error": "Failed to add student to the hall."}), 500
+
+    # 4. Send the Email
+    email_sent = send_welcome_email(email_address, user_id, raw_password)
+
+    # Prepare response
+    message = "Student added successfully."
+    if not email_sent:
+        message += " Warning: Automated email failed to send. Please distribute credentials manually."
+
+    return jsonify({
+        "message": message,
+        "student_id": student_id,
+        "user_id": user_id
+    }), 201

@@ -34,6 +34,7 @@ const Sidebar: React.FC = () => {
       { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/visitor-logs', label: 'Visitor Logs', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
+      { to: '/add-students', label: 'Add Students', icon: Users },
       { to: '/seat-applications', label: 'Seat Applications', icon: ClipboardList },
       { to: '/salary', label: 'Salary', icon: CreditCard },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
