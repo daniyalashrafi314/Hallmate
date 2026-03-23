@@ -12,7 +12,8 @@ import {
   Layers,
   LogOut,
   UserCircle,
-  ClipboardList
+  ClipboardList,
+  Heart
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { UserRole } from '../../types';
@@ -39,6 +40,7 @@ const Sidebar: React.FC = () => {
       { to: '/salary', label: 'Salary', icon: CreditCard },
       { to: '/request-payment', label: 'Request Payment', icon: CreditCard },
       { to: '/add-payments', label: 'Add Payments', icon: CreditCard },
+      { to: '/donations', label: 'Donations', icon: Heart },
     ],
     [UserRole.PROVOST]: [
       { to: '/users', label: 'User Management', icon: Users },

@@ -20,6 +20,7 @@ import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
 import StaffProfile from './pages/Staff/StaffProfile';
 import StaffAddPayments from './pages/Staff/StaffAddPayments';
 import StaffAddStudents from './pages/Staff/StaffAddStudents';
+import StaffDonations from './pages/Staff/StaffDonations';
 import StaffNotices from './pages/Staff/StaffNotices';
 import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
@@ -74,6 +75,7 @@ const App: React.FC = () => {
                 <Route path="/request-payment" element={<StaffPaymentRequest />} />
                 <Route path="/add-payments" element={<StaffAddPayments />} />
                 <Route path="/add-students" element={<StaffAddStudents />} />
+                <Route path="/donations" element={<StaffDonations />} />
                 <Route path="/salary" element={<StaffSalary />} />
                 <Route path="/seat-applications" element={<StaffSeatApplications />} />
                 <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />

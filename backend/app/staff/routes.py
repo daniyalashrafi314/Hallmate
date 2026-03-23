@@ -425,42 +425,82 @@ def get_salary_details(payment_id):
     return jsonify(salary_detail[0]), 200
 
 # --- 4) ASK FOR DONATIONS ---
-@staff_bp.route('/donations', methods=['POST'])
-def create_donation():
-    data = request.get_json()
-    description = data.get('description')
-    end_date = data.get('end_date') # Format: 'YYYY-MM-DD'
-
-    # Note: Complex transaction (Insert Donation -> Get ID -> Insert Asks_For)
-    # Ideally, use a stored procedure or transaction block in db.py.
-    # For simplicity here, we do it in two steps (logic handled in Python):
+@staff_bp.route('/donations', methods=['GET'])
+def list_donations():
     
-    # Step 1: Insert Donation
-    # We need the ID of the row we just inserted. 
-    # execute_read_query is used here because 'RETURNING' acts like a SELECT.
-    sql_step1 = """
-        INSERT INTO DONATIONS (description, end_date) 
-        VALUES (%s, %s) RETURNING donation_id
+    sql = """
+        SELECT 
+            d.donation_id as id,
+            d.description,
+            TO_CHAR(d.end_date, 'YYYY-MM-DD') as "endDate",
+            d.status,
+            COALESCE(st.student_id, sf.staff_id) as "requesterId",
+            COALESCE(st.name, sf.name) as "requesterName",
+            CASE 
+                WHEN st.student_id IS NOT NULL THEN 'Student'
+                ELSE 'Staff'
+            END as "requesterType",
+            COALESCE(st.phone_number, sf.phone_number) as phone
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON d.donation_id = af.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS sf ON af.staff_id = sf.staff_id
+        WHERE d.end_date >= CURRENT_DATE
+        ORDER BY d.start_date DESC
+    """
+    donations = execute_read_query(sql)
+    return jsonify(donations), 200
+@staff_bp.route('/donations', methods=['POST'])
+def create_staff_donation_request():
+    """
+    Staff creating a donation request. 
+    Inserts into DONATIONS and links to the staff_id in ASKS_FOR.
+    """
+    data = request.get_json()
+    desc = data.get('description')
+    end_date = data.get('endDate')
+
+    if not desc or not end_date:
+        return jsonify({"error": "Description and end date are required"}), 400
+
+    # CTE logic: Insert donation first, then use the ID to insert into ASKS_FOR
+    sql = """
+        WITH new_donation AS (
+            INSERT INTO DONATIONS (description, end_date, status) 
+            VALUES (%s, %s, 'Pending') 
+            RETURNING donation_id
+        )
+        INSERT INTO ASKS_FOR (donation_id, staff_id, student_id)
+        SELECT donation_id, %s, NULL FROM new_donation;
     """
     
-    # We call execute_read_query here to capture the returned ID
-    result_step1 = execute_read_query(sql_step1, (description, end_date))
+    # We pass CURRENT_STAFF_ID as the third parameter
+    success = execute_write_query(sql, (desc, end_date, CURRENT_STAFF_ID))
     
-    if result_step1:
-        new_donation_id = result_step1[0]['donation_id']
-        
-        # Step 2: Link Staff to Donation
-        sql_step2 = """
-            INSERT INTO ASKS_FOR (donation_id, staff_id) 
-            VALUES (%s, %s)
-        """
-        # We call execute_write_query here because we don't need a result
-        success_step2 = execute_write_query(sql_step2, (new_donation_id, CURRENT_STAFF_ID))
-        
-        if success_step2:
-            return jsonify({"message": "Donation request created", "id": new_donation_id}), 201
+    if success:
+        return jsonify({"message": "Staff donation request created"}), 201
+    return jsonify({"error": "Failed to create donation request"}), 500
 
-    return jsonify({"error": "Failed to create donation"}), 500
+@staff_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
+def delete_own_donation(donation_id):
+    """
+    Staff can only delete a donation if they were the one who asked for it
+    and if it hasn't been completed/closed yet.
+    """
+    sql = """
+        DELETE FROM DONATIONS 
+        WHERE donation_id = %s 
+        AND status = 'Pending'
+        AND donation_id IN (
+            SELECT donation_id FROM ASKS_FOR WHERE staff_id = %s
+        )
+    """
+    success = execute_write_query(sql, (donation_id, CURRENT_STAFF_ID))
+    
+    if success:
+        return jsonify({"message": "Donation request removed"}), 200
+    return jsonify({"error": "Unauthorized or donation already processed"}), 403
+
 
 # --- 5) ADD PAYMENTS TO STUDENTS (Bulk) ---
 @staff_bp.route('/assign-fees', methods=['POST'])
