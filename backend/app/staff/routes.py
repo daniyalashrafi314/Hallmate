@@ -33,7 +33,8 @@ def get_profile():
         s.hall_id,
         h.name AS hall_name,
         h.provost,
-        u.email_address
+        u.email_address,
+        (s.photo IS NOT NULL) AS has_photo
         FROM STAFFS s
         JOIN USERS u ON s.user_id = u.user_id
         JOIN HALLS h ON s.hall_id = h.hall_id
@@ -46,25 +47,55 @@ def get_profile():
         return jsonify(profile[0])
     return jsonify({"error": "Staff not found"}), 404
 
-#----1)For changing the profile info
-
+@staff_bp.route('/profile/photo', methods=['GET'])
+def get_profile_photo():
+    sql = """
+        SELECT photo
+        FROM STAFFS
+        WHERE staff_id = %s
+        """
+    result = execute_read_query(sql, (CURRENT_STAFF_ID,))
+    if not result or not result[0].get('photo'):
+        return jsonify({"error": "No photo found"}), 404
+    return Response(
+        result[0]['photo'],
+        mimetype='image/jpeg', # You can adjust to 'image/png' if needed, but 'jpeg' is widely compatible
+        headers={"Content-Disposition": "inline; filename=profile_photo.jpg"}
+    )
 
 @staff_bp.route('/profile', methods=['PUT'])
 def edit_profile():
-    data = request.get_json()
-    name = data.get("staff_name")
-    phone= data.get("phone_number")
-    email = data.get("email_address")
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        name = request.form.get("staff_name")
+        phone = request.form.get("phone_number")
+        email = request.form.get("email_address")
+        photo_file = request.files.get("photo")
+    else:
+        data = request.get_json() or {}
+        name = data.get("staff_name")
+        phone = data.get("phone_number")
+        email = data.get("email_address")
+        photo_file = None
 
     if not name or not email:
         return jsonify({"error": "Missing fields"}), 400
-    sql1 = """
+
+    staff_update_fields = ["name = %s", "phone_number = %s"]
+    staff_update_values = [name, phone]
+
+    if photo_file:
+        photo_bytes = photo_file.read()
+        staff_update_fields.append("photo = %s")
+        staff_update_values.append(photo_bytes)
+        
+    staff_update_values.append(CURRENT_STAFF_ID)
+
+    sql1 = f"""
             UPDATE STAFFS
-            SET name = %s,
-            phone_number = %s
+            SET {', '.join(staff_update_fields)}
             WHERE staff_id = %s
             """
-    execute_write_query(sql1, (name, phone, CURRENT_STAFF_ID))
+    execute_write_query(sql1, tuple(staff_update_values))
     sql2 = """
         UPDATE USERS
         SET email_address = %s
@@ -92,7 +123,7 @@ def edit_profile():
         """
         execute_write_query(sql, (name, hall_id))
 
-    return jsonify({"message": "Profile updated successfully"})
+    return jsonify({"message": "Profile updated successfully"}), 200
 
 #---2)Profile change password
 @staff_bp.route('/change-password', methods=['PUT'])

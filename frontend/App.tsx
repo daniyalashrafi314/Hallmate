@@ -16,7 +16,6 @@ import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
 
 import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
-import StaffPaymentRequest from './pages/Staff/StaffPaymentRequest';
 import StaffProfile from './pages/Staff/StaffProfile';
 import StaffAddPayments from './pages/Staff/StaffAddPayments';
 import StaffAddStudents from './pages/Staff/StaffAddStudents';
@@ -72,7 +71,6 @@ const App: React.FC = () => {
                 {/* Staff Routes */}
                 <Route path="/dashboard" element={<StaffVisitorLogs />} />
                 <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
-                <Route path="/request-payment" element={<StaffPaymentRequest />} />
                 <Route path="/add-payments" element={<StaffAddPayments />} />
                 <Route path="/add-students" element={<StaffAddStudents />} />
                 <Route path="/donations" element={<StaffDonations />} />
