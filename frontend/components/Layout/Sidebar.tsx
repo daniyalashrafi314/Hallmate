@@ -44,7 +44,7 @@ const Sidebar: React.FC = () => {
     ],
     [UserRole.PROVOST]: [
       { to: '/users', label: 'User Management', icon: Users },
-      { to: '/room-grid', label: 'Room Matrix', icon: Grid },
+      { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Residency Approvals', icon: ShieldCheck },
     ]
   };

@@ -25,7 +25,7 @@ import StaffNotices from './pages/Staff/StaffNotices';
 import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 
-import ProvostRoomGrid from './pages/Provost/ProvostRoomGrid';
+import ProvostRooms from './pages/Provost/ProvostRooms';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 
 interface AppContextType {
@@ -83,7 +83,7 @@ const App: React.FC = () => {
                 <Route path="/notices-manage" element={<StaffNotices />} />
 
                 {/* Provost Routes */}
-                <Route path="/room-grid" element={<ProvostRoomGrid />} />
+                <Route path="/rooms" element={<ProvostRooms />} />
                 <Route path="/users" element={<ProvostUserManagement />} />
 
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />

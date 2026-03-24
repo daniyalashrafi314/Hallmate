@@ -15,5 +15,8 @@ def create_app():
 
     from app.student.routes import student_bp  # Adjust the import path if your routes.py is in a different folder
     app.register_blueprint(student_bp, url_prefix="/student")
-     
+
+    from app.admin.routes import admin_bp 
+    app.register_blueprint(admin_bp, url_prefix='/admin')
+    
     return app

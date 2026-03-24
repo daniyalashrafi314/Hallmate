@@ -3,7 +3,7 @@ from app.db import execute_read_query, execute_write_query
 
 admin_bp = Blueprint('admin', __name__)
 
-#All pages of th
+CURRENT_HALL_ID = 1
 
 # --- 1) VIEW USERS (Students & Staff) ---
 @admin_bp.route('/students', methods=['GET'])
@@ -27,17 +27,21 @@ def get_all_staff():
     return jsonify(execute_read_query(sql))
 
 
+
 # --- 2) MANAGE SEAT APPLICATIONS ---
 @admin_bp.route('/seat-applications', methods=['GET'])
 def view_applications():
-    # Admin sees all pending applications, sorted by priority
     sql = "SELECT * FROM SEAT_APPLICATION WHERE status = 'Pending' ORDER BY priority_value DESC"
     return jsonify(execute_read_query(sql))
 
-@admin_bp.route('/seat-applications/<int:app_id>', methods=['PUT'])
+@admin_bp.route('/seat-applications/<int:app_id>', methods=['PUT', 'OPTIONS'])
 def process_application(app_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
     data = request.get_json()
-    new_status = data.get('status') # 'Approved' or 'Refused'
+    new_status = data.get('status') 
     
     sql = "UPDATE SEAT_APPLICATION SET status = %s WHERE application_id = %s"
     if execute_write_query(sql, (new_status, app_id)):
@@ -45,44 +49,101 @@ def process_application(app_id):
     return jsonify({"error": "Update failed"}), 400
 
 
+
 # --- 3) SEAT ALLOCATION (The Core Logic) ---
-@admin_bp.route('/allocate-seat', methods=['POST'])
+
+@admin_bp.route('/rooms', methods=['GET'])
+def get_rooms_and_seats():
+    sql = """
+        SELECT r.room_id, r.capacity, s.seat_number, a.student_id
+        FROM ROOMS r
+        JOIN SEATS s ON r.room_id = s.room_id
+        LEFT JOIN ALLOCATIONS a ON s.room_id = a.room_id 
+                               AND s.seat_number = a.seat_number 
+                               AND a.end_date IS NULL
+        WHERE r.hall_id = %s
+        ORDER BY r.room_id, s.seat_number
+    """
+    results = execute_read_query(sql, (CURRENT_HALL_ID,))
+    
+    rooms_dict = {}
+    for row in results:
+        rid = row['room_id']
+        if rid not in rooms_dict:
+            rooms_dict[rid] = {
+                "id": rid,
+                "floor": int(rid) // 100,
+                "capacity": row['capacity'],
+                "seats": []
+            }
+        rooms_dict[rid]['seats'].append({
+            "seat_number": row['seat_number'],
+            "studentId": row['student_id']
+        })
+        
+    return jsonify(list(rooms_dict.values())), 200
+
+@admin_bp.route('/approved-students', methods=['GET'])
+def get_approved_students_needing_seats():
+    sql = """
+        SELECT s.student_id, s.name, sa.priority_value
+        FROM STUDENTS s
+        JOIN SEAT_APPLICATION sa ON s.student_id = sa.student_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.hall_id = %s 
+          AND sa.status = 'Approved' 
+          AND a.room_id IS NULL
+        ORDER BY sa.priority_value DESC
+    """
+    students = execute_read_query(sql, (CURRENT_HALL_ID,))
+    return jsonify(students if students else []), 200
+
+@admin_bp.route('/allocate', methods=['POST', 'OPTIONS'])
 def allocate_seat():
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
     data = request.get_json()
     student_id = data.get('student_id')
-    room_id = data.get('room_id')      # Optional manual override
-    seat_num = data.get('seat_number') # Optional manual override
-
-    # If Admin didn't specify a seat, find the first 'Vacant' one automatically
-    if not room_id or not seat_num:
-        find_sql = "SELECT room_id, seat_number FROM SEATS WHERE status = 'Vacant' LIMIT 1"
-        available_seat = execute_read_query(find_sql)
-        if not available_seat:
-            return jsonify({"error": "No vacant seats available"}), 404
-        room_id = available_seat[0]['room_id']
-        seat_num = available_seat[0]['seat_number']
-
-    # Update 1: Create the Allocation record
-    alloc_sql = """
-        INSERT INTO ALLOCATIONS (student_id, room_id, seat_number, start_date)
-        VALUES (%s, %s, %s, CURRENT_DATE)
-    """
-    # Update 2: Mark Seat as Occupied
-    seat_sql = "UPDATE SEATS SET status = 'Occupied' WHERE room_id = %s AND seat_number = %s"
+    room_id = data.get('room_id')
+    seat_number = data.get('seat_number')
     
-    # Update 3: Change Student Status to RESIDENT
-    student_sql = "UPDATE STUDENTS SET status = 'RESIDENT' WHERE student_id = %s"
+    # 1. Create Allocation
+    execute_write_query("""
+        INSERT INTO ALLOCATIONS (student_id, room_id, seat_number, start_date) 
+        VALUES (%s, %s, %s, CURRENT_DATE)
+    """, (student_id, room_id, seat_number))
+    
+    # 2. Update Student Status and Seat Status
+    execute_write_query("UPDATE STUDENTS SET status = 'RESIDENT' WHERE student_id = %s", (student_id,))
+    execute_write_query("UPDATE SEATS SET status = 'occupied' WHERE room_id = %s AND seat_number = %s", (room_id, seat_number))
 
-    # In a real app, wrap these in a transaction. For now:
-    execute_write_query(alloc_sql, (student_id, room_id, seat_num))
-    execute_write_query(seat_sql, (room_id, seat_num))
-    execute_write_query(student_sql, (student_id,))
+    return jsonify({"message": "Student successfully allocated"}), 200
 
-    return jsonify({
-        "message": "Seat allocated successfully",
-        "room": room_id,
-        "seat": seat_num
-    })
+@admin_bp.route('/deallocate', methods=['POST', 'OPTIONS'])
+def deallocate_seat():
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    data = request.get_json()
+    room_id = data.get('room_id')
+    seat_number = data.get('seat_number')
+    student_id = data.get('student_id')
+    
+    # 1. End the allocation
+    execute_write_query("""
+        UPDATE ALLOCATIONS SET end_date = CURRENT_DATE 
+        WHERE student_id = %s AND room_id = %s AND seat_number = %s AND end_date IS NULL
+    """, (student_id, room_id, seat_number))
+    
+    # 2. Revert Statuses
+    execute_write_query("UPDATE STUDENTS SET status = 'ATTACHED' WHERE student_id = %s", (student_id,))
+    execute_write_query("UPDATE SEATS SET status = 'vacant' WHERE room_id = %s AND seat_number = %s", (room_id, seat_number))
+    
+    return jsonify({"message": "Student successfully deallocated"}), 200
+
 
 
 # --- 4) APPROVE DONATIONS ---
@@ -90,8 +151,12 @@ def allocate_seat():
 def get_pending_donations():
     return jsonify(execute_read_query("SELECT * FROM DONATIONS WHERE status = 'Pending'"))
 
-@admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT'])
+@admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT', 'OPTIONS'])
 def approve_donation(donation_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
     sql = "UPDATE DONATIONS SET status = 'Approved' WHERE donation_id = %s"
     if execute_write_query(sql, (donation_id,)):
         return jsonify({"message": "Donation request approved and is now public"})

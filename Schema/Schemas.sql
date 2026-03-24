@@ -89,11 +89,13 @@ CREATE TABLE ROOMS(   --7
 
 );
 
+CREATE TYPE seat_status AS ENUM ('vacant', 'occupied');
+
 CREATE TABLE SEATS( --8
             
     seat_number INT NOT NULL,
     room_id CHAR(3) NOT NULL,
-    status VARCHAR(20),
+    status seat_status DEFAULT 'vacant',
     PRIMARY KEY(room_id,seat_number),                   
     FOREIGN KEY (room_id)
         REFERENCES ROOMS(room_id)
