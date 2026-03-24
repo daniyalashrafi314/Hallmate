@@ -15,7 +15,7 @@ const StudentVisitors: React.FC = () => {
   const { theme } = useAppContext();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,7 +59,7 @@ const StudentVisitors: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Submission failed");
@@ -73,6 +73,28 @@ const StudentVisitors: React.FC = () => {
       alert("Failed to add visitor");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelVisitor = async (visitorId: string) => {
+    if (!confirm("Are you sure you want to cancel this expected visitor?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5000/student/visitors/${visitorId}/cancel`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        // Remove the cancelled visitor from the screen immediately
+        setVisitors(visitors.filter(v => v.id !== visitorId));
+      } else {
+        alert("Failed to cancel visitor.");
+      }
+    } catch (error) {
+      console.error("Error cancelling visitor");
+      alert("Network error occurred.");
     }
   };
 
@@ -106,14 +128,14 @@ const StudentVisitors: React.FC = () => {
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           {visitors.length > 0 && (
-            <button 
+            <button
               onClick={handleClearLog}
               className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-red-600 bg-red-50 hover:bg-red-100 font-bold transition-colors"
             >
               <Trash2 className="w-5 h-5" /> Clear Log
             </button>
           )}
-          <button 
+          <button
             onClick={() => setShowModal(true)}
             className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-bold ${theme.primary} shadow-md hover:shadow-lg transition-all`}
           >
@@ -131,47 +153,80 @@ const StudentVisitors: React.FC = () => {
           <h3 className="text-lg font-bold text-gray-800">No Visitors Logged</h3>
           <p className="text-gray-500">Add an expected visitor to notify the hall gates.</p>
         </div>
-      ) : (
-        /* Visitor List */
+      ) :
         <div className="space-y-4">
-          {visitors.map((visitor) => (
-            <div key={visitor.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between gap-6 hover:shadow-md transition-shadow">
-              <div className="flex-1">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{visitor.name}</h3>
-                    <span className="inline-block px-2 py-1 mt-1 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider rounded">
-                      {visitor.relationship}
-                    </span>
+          {visitors.map((visitor) => {
+            // NEW LOGIC: A visit is "Expected/Active" as long as the current time is BEFORE the exit time
+            const isExpected = new Date(visitor.exit_time) > new Date();
+
+            return (
+              <div key={visitor.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between gap-6 hover:shadow-md transition-shadow">
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        {visitor.name}
+                        {!isExpected && (
+                          <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase tracking-wider">
+                            Past Visit
+                          </span>
+                        )}
+                      </h3>
+                      <span className="inline-block px-2 py-1 mt-1 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider rounded">
+                        {visitor.relationship}
+                      </span>
+                    </div>
+
+                    {/* Action Buttons Container */}
+                    <div className="flex items-center gap-2">
+
+                      {/* CANCEL: ONLY show if the visit is still Expected/Active */}
+                      {isExpected && (
+                        <button
+                          onClick={() => handleCancelVisitor(visitor.id)}
+                          className="flex items-center gap-1 text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Cancel Visit
+                        </button>
+                      )}
+
+                      {/* HIDE: ONLY show if the visit is securely in the Past */}
+                      {!isExpected && (
+                        <button
+                          onClick={() => handleHideVisitor(visitor.id)}
+                          className="flex items-center gap-1 text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors"
+                          title="Remove from my view"
+                        >
+                          <UserX className="w-4 h-4" />
+                          Hide
+                        </button>
+                      )}
+
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => handleHideVisitor(visitor.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors p-2"
-                    title="Remove from my view"
-                  >
-                    <UserX className="w-5 h-5" />
-                  </button>
-                </div>
-                
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    {visitor.phone}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium text-gray-800">In:</span> {visitor.entry_time}
-                  </div>
-                  <div className="flex items-center gap-2 md:col-start-2">
-                    <Clock className="w-4 h-4 text-gray-400 opacity-0" /> {/* Spacer icon */}
-                    <span className="font-medium text-gray-800">Out:</span> {visitor.exit_time}
+
+                  {/* Time & Info Display */}
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      {visitor.phone}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <span className="font-medium text-gray-800">In:</span> {visitor.entry_time}
+                    </div>
+                    <div className="flex items-center gap-2 md:col-start-2">
+                      <Clock className="w-4 h-4 text-gray-400 opacity-0" />
+                      <span className="font-medium text-gray-800">Out:</span> {visitor.exit_time}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      )}
+      }
 
       {/* Add Visitor Modal */}
       {showModal && (
@@ -181,33 +236,33 @@ const StudentVisitors: React.FC = () => {
               <h3 className="text-xl font-bold text-gray-900">Add Expected Visitor</h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
             </div>
-            
+
             <form onSubmit={handleAddVisitor} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
-                  <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+                  <input required type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Relationship</label>
-                  <input required type="text" placeholder="e.g. Brother, Friend" value={formData.relationship} onChange={e => setFormData({...formData, relationship: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+                  <input required type="text" placeholder="e.g. Brother, Friend" value={formData.relationship} onChange={e => setFormData({ ...formData, relationship: e.target.value })} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expected Entry Time</label>
-                <input required type="datetime-local" value={formData.entry_time} onChange={e => setFormData({...formData, entry_time: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+                <input required type="datetime-local" value={formData.entry_time} onChange={e => setFormData({ ...formData, entry_time: e.target.value })} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expected Exit Time</label>
-                <input required type="datetime-local" value={formData.exit_time} onChange={e => setFormData({...formData, exit_time: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
+                <input required type="datetime-local" value={formData.exit_time} onChange={e => setFormData({ ...formData, exit_time: e.target.value })} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500" />
               </div>
-              
-              <button 
-                type="submit" 
+
+              <button
+                type="submit"
                 disabled={isSubmitting}
                 className={`w-full py-3 mt-4 rounded-xl font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400' : theme.primary}`}
               >

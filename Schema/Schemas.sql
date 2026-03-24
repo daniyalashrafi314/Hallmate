@@ -193,7 +193,7 @@ CREATE TABLE ASKS_FOR(
     student_id CHAR(7),
     staff_id CHAR(10),
     PRIMARY KEY(donation_id),
-    FOREIGN KEY(donation_id) REFERENCES DONATIONS(donation_id),
+    FOREIGN KEY(donation_id) REFERENCES DONATIONS(donation_id) ON DELETE CASCADE,
     FOREIGN KEY(student_id) REFERENCES STUDENTS(student_id),
     FOREIGN KEY(staff_id) REFERENCES STAFFS(staff_id)
 

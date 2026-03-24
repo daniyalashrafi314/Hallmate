@@ -9,24 +9,83 @@ student_bp = Blueprint('student', __name__)
 # In a real app, this comes from the login session.
 CURRENT_STUDENT_ID = '2305108'
 
-# --- 1) STUDENT PROFILE ---
-@student_bp.route('/profile', methods=['GET'])
-def get_profile():
-    # Join STUDENTS, USERS, and HALLS to get a complete picture
-    sql = """
-        SELECT s.student_id, s.name, s.phone_number, s.status, 
-               h.name as hall_name, u.email_address 
+# --- 1) STUDENT HOME ---
+
+@student_bp.route('/dashboard', methods=['GET'])
+def get_student_dashboard():
+    # 1. Profile & Allocation Info
+    # Uses STUDENTS, HALLS, and ALLOCATIONS tables [cite: 84, 86, 96]
+    profile_sql = """
+        SELECT s.status, s.name, h.name as hall_name, h.provost, a.room_id, a.seat_number
         FROM STUDENTS s
-        JOIN USERS u ON s.user_id = u.user_id
         JOIN HALLS h ON s.hall_id = h.hall_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
         WHERE s.student_id = %s
     """
-    profile = execute_read_query(sql, (CURRENT_STUDENT_ID,))
-    if profile:
-        return jsonify(profile[0])
-    return jsonify({"error": "Student not found"}), 404
+    profile_data = execute_read_query(profile_sql, (CURRENT_STUDENT_ID,))
+    if not profile_data:
+        return jsonify({"error": "Student not found"}), 404
 
+    # 2. Top Due Payment 
+    # Uses PAYMENTS and FEES tables, sorting by due_time [cite: 97, 98]
+    payment_sql = """
+        SELECT p.payment_type as title, p.amount, p.due_time, p.status 
+        FROM PAYMENTS p
+        JOIN FEES f ON p.payment_id = f.payment_id
+        WHERE f.student_id = %s AND p.status IN ('Due', 'Overdue')
+        ORDER BY p.due_time ASC LIMIT 1
+    """
+    payment_data = execute_read_query(payment_sql, (CURRENT_STUDENT_ID,))
 
+    # 3. Top Expected Visitor (Entry time in the future)
+    # Uses VISITORS table [cite: 88, 89]
+    visitor_sql = """
+        SELECT name, entry_time 
+        FROM VISITORS 
+        WHERE student_id = %s AND entry_time > CURRENT_TIMESTAMP 
+        ORDER BY entry_time ASC LIMIT 1
+    """
+    visitor_data = execute_read_query(visitor_sql, (CURRENT_STUDENT_ID,))
+
+    # 4. Top Notice 
+    # Uses NOTICE and STUDENT_NOTICE_STATES tables [cite: 103, 104]
+    notice_sql = """
+        SELECT n.title, n.created_at, COALESCE(sns.is_read, FALSE) as is_read
+        FROM NOTICE n
+        LEFT JOIN STUDENT_NOTICE_STATES sns ON n.notice_id = sns.notice_id AND sns.student_id = %s
+        WHERE sns.is_hidden IS NOT TRUE
+        ORDER BY n.created_at DESC LIMIT 1
+    """
+    notice_data = execute_read_query(notice_sql, (CURRENT_STUDENT_ID,))
+
+    # 5. Top Approved Donation
+    # Uses DONATIONS table [cite: 99]
+    donation_sql = """
+        SELECT description, start_date 
+        FROM DONATIONS 
+        WHERE status = 'Approved' 
+        ORDER BY start_date DESC LIMIT 1
+    """
+    donation_data = execute_read_query(donation_sql)
+
+    # 6. Top Complaint
+    # Uses COMPLAINTS table [cite: 90, 91]
+    complaint_sql = """
+        SELECT complaint_type as type, status, date 
+        FROM COMPLAINTS 
+        WHERE student_id = %s 
+        ORDER BY date DESC LIMIT 1
+    """
+    complaint_data = execute_read_query(complaint_sql, (CURRENT_STUDENT_ID,))
+
+    return jsonify({
+        "profile": profile_data[0],
+        "payment": payment_data[0] if payment_data else None,
+        "visitor": visitor_data[0] if visitor_data else None,
+        "notice": notice_data[0] if notice_data else None,
+        "donation": donation_data[0] if donation_data else None,
+        "complaint": complaint_data[0] if complaint_data else None
+    }), 200
 
 # --- 2) PAYMENTS (Fees) ---
 
@@ -298,6 +357,18 @@ def add_visitor():
         return jsonify({"message": "Visitor expected", "id": visitor_id}), 201
         
     return jsonify({"error": "Failed to add visitor"}), 400
+
+@student_bp.route('/visitors/<visitor_id>/cancel', methods=['DELETE'])
+def cancel_visitor(visitor_id):
+    sql = """
+        DELETE FROM VISITORS 
+        WHERE visitor_id = %s AND student_id = %s
+    """
+    success = execute_write_query(sql, (visitor_id, CURRENT_STUDENT_ID))
+    
+    if success:
+        return jsonify({"message": "Visitor cancelled successfully"}), 200
+    return jsonify({"error": "Failed to cancel visitor or unauthorized"}), 400
 
 @student_bp.route('/visitors/<visitor_id>/hide', methods=['PUT'])
 def hide_visitor(visitor_id):
