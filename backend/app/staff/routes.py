@@ -110,18 +110,21 @@ def edit_profile():
         FROM STAFFS
         WHERE staff_id = %s
         """
-    result = execute_read_query(sql3, (CURRENT_STAFF_ID))
+    result = execute_read_query(sql3, (CURRENT_STAFF_ID,)) # Added comma for proper tuple
+    
     if result:
+        # These variables are now safely scoped inside this block
         role = result[0]["role"]
         hall_id = result[0]["hall_id"]
 
-    if role.lower() == "provost":
-        sql = """
-        UPDATE HALLS
-        SET provost = %s
-        WHERE hall_id = %s
-        """
-        execute_write_query(sql, (name, hall_id))
+        # Only check the role if we successfully retrieved it
+        if role and role.lower() == "provost":
+            sql4 = """
+            UPDATE HALLS
+            SET provost = %s
+            WHERE hall_id = %s
+            """
+            execute_write_query(sql4, (name, hall_id))
 
     return jsonify({"message": "Profile updated successfully"}), 200
 

@@ -11,6 +11,7 @@ interface StaffProfileData {
   hall_name: string;
   provost: string;
   email_address: string;
+  has_photo: boolean;
 }
 
 const StaffProfile: React.FC = () => {
@@ -25,8 +26,10 @@ const StaffProfile: React.FC = () => {
   const [editFormData, setEditFormData] = useState({
     staff_name: '',
     phone_number: '',
-    email_address: ''
+    email_address: '',
+    photo: null as File | null
   });
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   // Password Mode State
   const [passwordMode, setPasswordMode] = useState(false);
@@ -61,8 +64,10 @@ const StaffProfile: React.FC = () => {
       setEditFormData({
         staff_name: profile.staff_name,
         phone_number: profile.phone_number,
-        email_address: profile.email_address
+        email_address: profile.email_address,
+        photo: null
       });
+      setPhotoPreview(null);
       setEditMode(true);
     }
   };
@@ -75,24 +80,47 @@ const StaffProfile: React.FC = () => {
     }));
   };
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setEditFormData(prev => ({
+        ...prev,
+        photo: file
+      }));
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleEditCancel = () => {
     setEditMode(false);
     setEditFormData({
       staff_name: '',
       phone_number: '',
-      email_address: ''
+      email_address: '',
+      photo: null
     });
+    setPhotoPreview(null);
   };
 
   const handleEditSave = async () => {
     setIsSaving(true);
     try {
+      const formData = new FormData();
+      formData.append('staff_name', editFormData.staff_name);
+      formData.append('phone_number', editFormData.phone_number);
+      formData.append('email_address', editFormData.email_address);
+      if (editFormData.photo) {
+        formData.append('photo', editFormData.photo);
+      }
+
       const response = await fetch('http://localhost:5000/staff/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editFormData)
+        body: formData
       });
 
       if (!response.ok) throw new Error('Failed to update profile');
@@ -103,6 +131,7 @@ const StaffProfile: React.FC = () => {
       // Reload profile data
       await fetchProfile();
       setEditMode(false);
+      setPhotoPreview(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile');
     } finally {
@@ -220,8 +249,27 @@ const StaffProfile: React.FC = () => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {/* Header Section with Avatar */}
         <div className={`${theme.primary} text-white p-8 flex items-center gap-6`}>
-          <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <User className="w-12 h-12" />
+          <div className="relative w-20 h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {photoPreview ? (
+              <img src={photoPreview} alt="Photo preview" className="w-full h-full object-cover" />
+            ) : profile.has_photo ? (
+              <img src="http://localhost:5000/staff/profile/photo" alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-12 h-12" />
+            )}
+            {editMode && (
+              <label className="absolute inset-0 cursor-pointer bg-black/40 flex items-center justify-center hover:bg-black/60 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <div className="text-center">
+                  <div className="text-white text-xs font-bold">Change Photo</div>
+                </div>
+              </label>
+            )}
           </div>
           <div>
             <h3 className="text-3xl font-bold">{editMode ? editFormData.staff_name : profile.staff_name}</h3>
