@@ -166,7 +166,10 @@ def get_notices():
     except ValueError:
         return jsonify({"error": "Invalid pagination params"}), 400
     sql = """
-        SELECT n.notice_id, n.title, n.description, n.created_at
+        SELECT n.notice_id, 
+        n.title, 
+        n.description, 
+        TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at
         FROM NOTICE n
         JOIN STAFFS s ON n.staff_id = s.staff_id
         WHERE s.hall_id = %s
@@ -179,7 +182,12 @@ def get_notices():
 @staff_bp.route('/notices/<int:notice_id>', methods=['GET'])
 def get_notice(notice_id):
     sql = """
-        SELECT n.notice_id, n.title, n.description, n.created_at, s.staff_id, s.name, (n.pdf_file IS NOT NULL) AS has_pdf
+        SELECT n.notice_id, 
+        n.title, 
+        n.description, 
+        TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at, 
+        s.staff_id, s.name, 
+        (n.pdf_file IS NOT NULL) AS has_pdf
         FROM NOTICE n
         JOIN STAFFS s ON n.staff_id = s.staff_id
         WHERE n.notice_id = %s

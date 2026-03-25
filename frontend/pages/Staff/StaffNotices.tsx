@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../../App';
-import { FileText, Calendar, Trash2, File, Clock, User, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Calendar, Trash2, File, Clock, User, ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 interface Notice {
@@ -21,6 +21,7 @@ const ITEMS_PER_PAGE = 10;
 
 const StaffNotices: React.FC = () => {
   const { theme } = useAppContext();
+  const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<NoticeDetail | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -30,6 +31,10 @@ const StaffNotices: React.FC = () => {
   const [deleting, setDeleting] = useState<boolean>(false);
   const [pdfLoading, setPdfLoading] = useState<boolean>(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [createTitle, setCreateTitle] = useState<string>('');
+  const [createDescription, setCreateDescription] = useState<string>('');
+  const [createPdf, setCreatePdf] = useState<File | null>(null);
+  const [creating, setCreating] = useState<boolean>(false);
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
@@ -145,12 +150,199 @@ const StaffNotices: React.FC = () => {
     }
   };
 
+  const handleCreateNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!createTitle.trim()) {
+      setError('Title is required');
+      return;
+    }
+
+    try {
+      setCreating(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append('title', createTitle);
+      formData.append('description', createDescription);
+      if (createPdf) {
+        formData.append('pdf_file', createPdf);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/notices`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create notice');
+      }
+
+      // Reset form and navigate back to list
+      setCreateTitle('');
+      setCreateDescription('');
+      setCreatePdf(null);
+      setViewMode('list');
+      setCurrentPage(1);
+      setError(null);
+
+      // Refresh the notices list
+      setTotalCount(prev => prev + 1);
+      const fetchResponse = await fetch(`${API_BASE_URL}/notices?limit=10&offset=0`);
+      if (fetchResponse.ok) {
+        const data = await fetchResponse.json();
+        setNotices(data.data || []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create notice');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && !file.name.endsWith('.pdf')) {
+      setError('Only PDF files are allowed');
+      setCreatePdf(null);
+      return;
+    }
+    setCreatePdf(file || null);
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
+      {viewMode === 'create' ? (
+        // CREATE NOTICE PAGE
+        <div>
+          {/* Header with Back Button */}
+          <div className="mb-8 flex items-center gap-4">
+            <button
+              onClick={() => {
+                setViewMode('list');
+                setCreateTitle('');
+                setCreateDescription('');
+                setCreatePdf(null);
+                setError(null);
+              }}
+              className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+            >
+              ← Back
+            </button>
+            <div>
+              <h2 className={`text-2xl font-bold ${theme.text}`}>Create New Notice</h2>
+              <p className="text-gray-500">Fill in the details below to post a notice</p>
+            </div>
+          </div>
+
+          {/* Error Banner */}
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium flex items-center justify-between mb-6">
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">✕</button>
+            </div>
+          )}
+
+          {/* Create Notice Form */}
+          <form onSubmit={handleCreateNotice} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <div className="space-y-8">
+              {/* Title Field */}
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase mb-3 block">Title</label>
+                <input
+                  type="text"
+                  maxLength={150}
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder="Enter notice title"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-lg"
+                />
+                <p className={`text-xs mt-2 ${createTitle.length > 120 ? 'text-orange-600' : 'text-gray-400'}`}>
+                  {createTitle.length}/150 characters
+                </p>
+              </div>
+
+              {/* Description Field */}
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase mb-3 block">Description</label>
+                <textarea
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  placeholder="Enter notice description (optional)"
+                  rows={8}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
+                />
+              </div>
+
+              {/* PDF Upload Field */}
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase mb-3 block">Attach PDF (Optional)</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="pdf-input"
+                  />
+                  <label htmlFor="pdf-input" className="cursor-pointer block">
+                    <File className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-gray-700">
+                      {createPdf ? createPdf.name : 'Click to upload PDF or drag and drop'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">PDF files only</p>
+                  </label>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-6 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('list');
+                    setCreateTitle('');
+                    setCreateDescription('');
+                    setCreatePdf(null);
+                    setError(null);
+                  }}
+                  className="flex-1 px-6 py-3 rounded-lg border-2 border-gray-200 text-gray-800 font-bold hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating || !createTitle.trim()}
+                  className={`flex-1 px-6 py-3 rounded-lg text-white font-bold transition-all flex items-center justify-center gap-2 ${
+                    creating || !createTitle.trim()
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-green-600 shadow-lg hover:shadow-xl hover:scale-105'
+                  }`}
+                >
+                  {creating ? 'Posting...' : 'Post Notice'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : (
+        // NOTICES LIST PAGE
+        <div>
       <div className="mb-8">
-        <h2 className={`text-2xl font-bold ${theme.text}`}>Notice Board</h2>
-        <p className="text-gray-500">Manage notices for your hall</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className={`text-2xl font-bold ${theme.text}`}>Notice Board</h2>
+            <p className="text-gray-500">Manage notices for your hall</p>
+          </div>
+          <button
+            onClick={() => setViewMode('create')}
+            className={`${theme.primary} text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 shadow-lg hover:shadow-xl transition-all hover:scale-105`}
+          >
+            <Plus className="w-5 h-5" />
+            Create Notice
+          </button>
+        </div>
       </div>
 
       {/* Error Banner */}
@@ -368,6 +560,8 @@ const StaffNotices: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>
