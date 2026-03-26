@@ -73,14 +73,22 @@ const StaffDonations: React.FC = () => {
   const handleWizardSubmit = async () => {
     setIsSubmitting(true);
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           description: formData.description,
           endDate: formData.endDate // Backend expects this!
         }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to submit request');
       
@@ -106,10 +114,17 @@ const StaffDonations: React.FC = () => {
   const handleDeleteRequest = async (id: string) => {
     if (confirm("Are you sure you want to withdraw this donation request?")) {
       try {
+        const token = localStorage.getItem('hallmate_token');
         const response = await fetch(`${API_BASE}/${id}`, {
           method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
         });
         
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
         if (!response.ok) throw new Error('Failed to delete request');
         
         // Remove from UI after successful DB deletion

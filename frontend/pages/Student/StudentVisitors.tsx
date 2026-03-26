@@ -64,11 +64,20 @@ const StudentVisitors: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify(formData)
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -92,9 +101,16 @@ const StudentVisitors: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/student/visitors/${visitorId}/cancel`, {
-        method: 'DELETE'
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE}/{visitorId}/cancel`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (response.ok) {
         // Remove the cancelled visitor from the screen immediately
@@ -110,8 +126,20 @@ const StudentVisitors: React.FC = () => {
 
   const handleHideVisitor = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/${id}/hide`, { method: 'PUT' });
-      setVisitors(visitors.filter(v => v.id !== id));
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE}/${id}/hide`, { 
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
+      if (response.ok) {
+        setVisitors(visitors.filter(v => v.id !== id));
+      }
     } catch (error) {
       console.error("Failed to hide visitor");
     }
@@ -120,8 +148,20 @@ const StudentVisitors: React.FC = () => {
   const handleClearLog = async () => {
     if (confirm("Are you sure you want to clear your visitor log? Staff will still have access to these records.")) {
       try {
-        await fetch(`${API_BASE}/clear`, { method: 'PUT' });
-        setVisitors([]);
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/clear`, { 
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
+        if (response.ok) {
+          setVisitors([]);
+        }
       } catch (error) {
         console.error("Failed to clear log");
       }

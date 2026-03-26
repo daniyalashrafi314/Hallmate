@@ -63,9 +63,19 @@ const StudentPayments: React.FC = () => {
     
     setTimeout(async () => {
       try {
-        const response = await fetch(`${API_BASE}/${id}/pay`, { method: 'PUT' });
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/${id}/pay`, { 
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
         if (response.ok) {
-          await fetchPayments();
+          await fetchPayments(); // Assuming fetchPayments is already updated with Auth!
         }
       } catch (error) {
         alert("Payment processing failed.");

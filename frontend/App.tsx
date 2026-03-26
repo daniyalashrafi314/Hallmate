@@ -18,7 +18,7 @@ import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
 
 // Staff Pages
-import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
+import StaffVisitors from './pages/Staff/StaffVisitors';
 import StaffProfile from './pages/Staff/StaffProfile';
 import StaffAddPayments from './pages/Staff/StaffAddPayments';
 import StaffAddStudents from './pages/Staff/StaffAddStudents';
@@ -115,7 +115,7 @@ const App: React.FC = () => {
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                         
                         {/* Student Routes */}
-                        <Route path="/dashboard" element={userRole === UserRole.STUDENT ? <StudentHome /> : <StaffVisitorLogs />} />
+                        <Route path="/dashboard" element={userRole === UserRole.STUDENT ? <StudentHome /> : <StaffVisitors />} />
                         <Route path="/seat-application" element={<StudentSeatApplication />} />
                         <Route path="/payments" element={<StudentPayments />} />
                         <Route path="/visitors" element={<StudentVisitors />} />
@@ -124,7 +124,7 @@ const App: React.FC = () => {
                         <Route path="/complaints" element={<StudentComplaints />} />
 
                         {/* Staff Routes */}
-                        <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
+                        <Route path="/visitors" element={<StaffVisitors />} />
                         <Route path="/add-payments" element={<StaffAddPayments />} />
                         <Route path="/add-students" element={<StaffAddStudents />} />
                         <Route path="/salary" element={<StaffSalary />} />

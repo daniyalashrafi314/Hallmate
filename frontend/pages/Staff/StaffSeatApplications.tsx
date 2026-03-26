@@ -253,11 +253,20 @@ const ApplicationDetailsView: React.FC = () => {
   const [updating, setUpdating] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
 
-  useEffect(() => {
-    const fetchDetails = async () => {
+  const fetchDetails = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${API_BASE_URL}/seat-applications/${id}`);
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE_URL}/seat-applications/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if(response.status == 401 || response.status == 403) {
+          window.location.href = '/login';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error('Failed to fetch application details');
@@ -273,6 +282,7 @@ const ApplicationDetailsView: React.FC = () => {
       }
     };
 
+  useEffect(() => {
     if (id) {
       fetchDetails();
     }
@@ -288,11 +298,20 @@ const ApplicationDetailsView: React.FC = () => {
       setUpdating(true);
       setError(null);
 
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE_URL}/seat-applications/${id}/priority`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ priority_value: priorityValue })
       });
+
+      if(response.status == 401 || response.status == 403) {
+        window.location.href = '/login';
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to update priority');

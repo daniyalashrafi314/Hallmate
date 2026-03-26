@@ -52,33 +52,43 @@ const StaffAddPayments: React.FC = () => {
 
   const paymentTypes = ['Tuition', 'Hostel', 'Mess', 'Other'];
 
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('hallmate_token');
+      const authHeaders = { 'Authorization': `Bearer ${token}` };
+
+      const [roomsRes, batchesRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/rooms`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/batches`, { headers: authHeaders })
+      ]);
+
+      // Check if EITHER request was rejected due to authentication
+      if (roomsRes.status === 401 || roomsRes.status === 403 || 
+          batchesRes.status === 401 || batchesRes.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
+      if (!roomsRes.ok || !batchesRes.ok) {
+        throw new Error('Failed to fetch initial data');
+      }
+
+      const roomsData = await roomsRes.json();
+      const batchesData = await batchesRes.json();
+
+      setRooms(roomsData);
+      setBatches(batchesData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fetch rooms and batches on component mount
   useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        setLoading(true);
-        const [roomsRes, batchesRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/rooms`),
-          fetch(`${API_BASE_URL}/batches`)
-        ]);
-
-        if (!roomsRes.ok || !batchesRes.ok) {
-          throw new Error('Failed to fetch initial data');
-        }
-
-        const roomsData = await roomsRes.json();
-        const batchesData = await batchesRes.json();
-
-        setRooms(roomsData);
-        setBatches(batchesData);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchInitialData();
   }, []);
 
@@ -91,36 +101,44 @@ const StaffAddPayments: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  const fetchStudents = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+
+      if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
+      if (selectedRoom) params.append('room', selectedRoom);
+      if (selectedBatch) params.append('batch', selectedBatch);
+
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE_URL}/students?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch students');
+      }
+
+      const data = await response.json();
+      setStudents(data);
+      setError(null);
+      
+      // Clear selection when filters change
+      setSelectedStudents(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load students');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fetch students whenever filters change
   useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        setLoading(true);
-        const params = new URLSearchParams();
-
-        if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
-        if (selectedRoom) params.append('room', selectedRoom);
-        if (selectedBatch) params.append('batch', selectedBatch);
-
-        const response = await fetch(`${API_BASE_URL}/students?${params.toString()}`);
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch students');
-        }
-
-        const data = await response.json();
-        setStudents(data);
-        setError(null);
-        
-        // Clear selection when filters change
-        setSelectedStudents(new Set());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load students');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStudents();
   }, [selectedRoom, selectedBatch, debouncedSearchQuery]);
 
@@ -203,13 +221,20 @@ const StaffAddPayments: React.FC = () => {
         due_time: paymentForm.due_date,
       };
 
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE_URL}/add-payments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

@@ -74,12 +74,26 @@ const StudentSeatApplication: React.FC = () => {
 
     if (confirm(msg)) {
       try {
-        await fetch(`${API_BASE}/cancel`, { method: 'DELETE' });
-        setAppStatus('None');
-        setStep(1);
-        setReasoning('');
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/cancel`, { 
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` } 
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
+        if (response.ok) {
+          setAppStatus('None');
+          setStep(1);
+          setReasoning('');
+        } else {
+          alert("Failed to clear application.");
+        }
       } catch (error) {
-        alert("Failed to clear application");
+        alert("Network error. Failed to clear application.");
       }
     }
   };
@@ -90,15 +104,25 @@ const StudentSeatApplication: React.FC = () => {
       return;
     }
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({
           reasoning,
           phone: profile.phone,
           department: profile.department
         })
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       if (response.ok) {
         setAppStatus('Pending');
       } else {

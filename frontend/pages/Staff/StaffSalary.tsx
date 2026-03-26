@@ -74,7 +74,15 @@ const StaffSalary: React.FC = () => {
   const fetchSalaryDetails = async (paymentId: number) => {
     try {
       setLoadingDetails(true);
-      const response = await fetch(`${API_BASE_URL}/salary/${paymentId}`);
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE_URL}/salary/${paymentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to fetch salary details');

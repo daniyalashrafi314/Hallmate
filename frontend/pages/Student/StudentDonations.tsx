@@ -73,18 +73,27 @@ const StudentDonations: React.FC = () => {
   const availableDonations = donations.filter(d => d.status === 'Approved');
   const myDonations = donations.filter(d => String(d.requesterId) === String(user?.id));
 
-  // --- 2. Submit New Request (POST) ---
+  // --- Submit Request (POST)
   const handleWizardSubmit = async () => {
     setIsSubmitting(true);
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // <-- Merged here!
+        },
         body: JSON.stringify({
           description: formData.description,
-          endDate: formData.endDate // Backend expects this!
+          endDate: formData.endDate 
         }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to submit request');
       
@@ -110,10 +119,17 @@ const StudentDonations: React.FC = () => {
   const handleDeleteRequest = async (id: string) => {
     if (confirm("Are you sure you want to withdraw this donation request?")) {
       try {
+        const token = localStorage.getItem('hallmate_token');
         const response = await fetch(`${API_BASE}/${id}`, {
           method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` } // DELETE usually doesn't need Content-Type
         });
         
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
         if (!response.ok) throw new Error('Failed to delete request');
         
         // Remove from UI after successful DB deletion
@@ -133,14 +149,23 @@ const StudentDonations: React.FC = () => {
     }
 
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE}/${payModalFor?.id}/pledge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({
           pledgeAmount: Number(payAmount),
-          donorId: user?.id // Assuming your backend needs to know who is donating
+          donorId: user?.id // Note: The backend can now pull this from the token instead!
         }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to pledge donation');
 

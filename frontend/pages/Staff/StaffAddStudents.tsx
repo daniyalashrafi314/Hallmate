@@ -75,13 +75,20 @@ const StaffAddStudents: React.FC = () => {
         email_address: formData.email_address.trim(),
       };
 
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE_URL}/add-students`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // <-- Token added here
         },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       const data = await response.json();
 

@@ -57,8 +57,20 @@ const StudentNotices: React.FC = () => {
     // If it's unread, mark it as read in the DB and locally
     if (!notice.is_read) {
       try {
-        await fetch(`${API_BASE}/${notice.id}/read`, { method: 'PUT' });
-        setNotices(notices.map(n => n.id === notice.id ? { ...n, is_read: true } : n));
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/${notice.id}/read`, { 
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
+        if (response.ok) {
+          setNotices(notices.map(n => n.id === notice.id ? { ...n, is_read: true } : n));
+        }
       } catch (error) {
         console.error("Failed to mark as read");
       }
@@ -69,8 +81,20 @@ const StudentNotices: React.FC = () => {
     e.stopPropagation(); // Prevent the click from expanding the notice
     if (confirm("Hide this notice? You won't be able to see it again.")) {
       try {
-        await fetch(`${API_BASE}/${id}/hide`, { method: 'PUT' });
-        setNotices(notices.filter(n => n.id !== id));
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/${id}/hide`, { 
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
+        if (response.ok) {
+          setNotices(notices.filter(n => n.id !== id));
+        }
       } catch (error) {
         console.error("Failed to hide notice");
       }
@@ -80,7 +104,16 @@ const StudentNotices: React.FC = () => {
   const handleDownloadPDF = async (e: React.MouseEvent, id: number, title: string) => {
     e.stopPropagation(); // Prevent expansion
     try {
-      const response = await fetch(`${API_BASE}/${id}/pdf`);
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE}/${id}/pdf`, {
+        headers: { 'Authorization': `Bearer ${token}` } // GET requests just need the headers
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);

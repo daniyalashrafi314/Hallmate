@@ -38,11 +38,20 @@ const StaffNotices: React.FC = () => {
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
-  // Fetch total count
-  useEffect(() => {
-    const fetchCount = async () => {
+  const fetchCount = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/notices/count`);
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE_URL}/notices/count`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if(response.status == 401 || response.status == 403) {
+          window.location.href = '/login';
+          return;
+        }
+
         if (!response.ok) throw new Error('Failed to fetch count');
         const data = await response.json();
         setTotalCount(data.total || 0);
@@ -50,12 +59,13 @@ const StaffNotices: React.FC = () => {
         console.error('Error fetching count:', err);
       }
     };
+
+  // Fetch total count
+  useEffect(() => {
     fetchCount();
   }, []);
 
-  // Fetch notices for current page
-  useEffect(() => {
-    const fetchNotices = async () => {
+  const fetchNotices = async () => {
       try {
         setLoading(true);
         setError(null);
@@ -63,7 +73,18 @@ const StaffNotices: React.FC = () => {
         params.append('limit', ITEMS_PER_PAGE.toString());
         params.append('offset', ((currentPage - 1) * ITEMS_PER_PAGE).toString());
 
-        const response = await fetch(`${API_BASE_URL}/notices?${params.toString()}`);
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE_URL}/notices?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if(response.status == 401 || response.status == 403) {
+          window.location.href = '/login';
+          return;
+        }
+
         if (!response.ok) throw new Error('Failed to fetch notices');
 
         const data = await response.json();
@@ -75,7 +96,9 @@ const StaffNotices: React.FC = () => {
         setLoading(false);
       }
     };
-
+    
+  // Fetch notices for current page
+  useEffect(() => {
     fetchNotices();
   }, [currentPage]);
 
@@ -88,7 +111,18 @@ const StaffNotices: React.FC = () => {
 
     try {
       setError(null);
-      const response = await fetch(`${API_BASE_URL}/notices/${noticeId}`);
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE_URL}/notices/${noticeId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if(response.status == 401 || response.status == 403) {
+        window.location.href = '/login';
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to fetch notice details');
 
       const data = await response.json();
@@ -105,7 +139,18 @@ const StaffNotices: React.FC = () => {
 
     try {
       setPdfLoading(true);
-      const response = await fetch(`${API_BASE_URL}/notices/${selectedNotice.notice_id}/pdf`);
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE_URL}/notices/${selectedNotice.notice_id}/pdf`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if(response.status == 401 || response.status == 403) {
+        window.location.href = '/login';
+        return;
+      }
+
       if (!response.ok) {
         setError('Failed to download PDF');
         return;
@@ -133,9 +178,18 @@ const StaffNotices: React.FC = () => {
 
     try {
       setDeleting(true);
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE_URL}/notices/${selectedNotice.notice_id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
+
+      if(response.status == 401 || response.status == 403) {
+        window.location.href = '/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to delete notice');
 
@@ -169,10 +223,19 @@ const StaffNotices: React.FC = () => {
         formData.append('pdf_file', createPdf);
       }
 
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(`${API_BASE_URL}/notices`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
       });
+
+      if(response.status == 401 || response.status == 403) {
+        window.location.href = '/login';
+        return;
+      }
 
       if (!response.ok) {
         const data = await response.json();

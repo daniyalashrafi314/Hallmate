@@ -129,10 +129,20 @@ const StaffProfile: React.FC = () => {
         formData.append('photo', editFormData.photo);
       }
 
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch('http://localhost:5000/staff/profile', {
         method: 'PUT',
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+          // Do NOT add 'Content-Type' here. The browser handles it for FormData!
+        },
         body: formData
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to update profile');
       
@@ -140,7 +150,7 @@ const StaffProfile: React.FC = () => {
       setTimeout(() => setSuccessMessage(null), 3000);
       
       // Reload profile data
-      await fetchProfile();
+      await fetchProfile(); // Make sure fetchProfile is updated too!
       setEditMode(false);
       setPhotoPreview(null);
     } catch (err) {
@@ -186,13 +196,20 @@ const StaffProfile: React.FC = () => {
 
     setIsSaving(true);
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch('http://localhost:5000/staff/change-password', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(passwordFormData)
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to change password');
       

@@ -55,11 +55,21 @@ const StudentComplaints: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const token = localStorage.getItem('hallmate_token');
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify(formData)
       });
+      
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       if (response.ok) {
         setShowModal(false);
         setFormData({ type: 'Room', description: '', is_anonymous: false });
@@ -77,7 +87,17 @@ const StudentComplaints: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (confirm("Are you sure you want to withdraw this complaint?")) {
       try {
-        const response = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch(`${API_BASE}/${id}`, { 
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          window.location.href = '#/login';
+          return;
+        }
+
         if (response.ok) {
           setComplaints(complaints.filter(c => c.id !== id));
         } else {
