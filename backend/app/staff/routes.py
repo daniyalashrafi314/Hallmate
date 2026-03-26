@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash
 import re
 import secrets
 import string
-
+from app.auth.middleware import token_required
 # 1. Define the Blueprint
 # We define it here so other files (like your main app.py) can import it.
 staff_bp = Blueprint('staff', __name__)
@@ -22,6 +22,7 @@ CURRENT_HALL_ID = 1
 #The photo section is missing and needs to be fixed
 
 @staff_bp.route('/profile', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_profile():
     # We join STAFFS and USERS to get all details including email
     sql = """
@@ -48,6 +49,7 @@ def get_profile():
     return jsonify({"error": "Staff not found"}), 404
 
 @staff_bp.route('/profile/photo', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_profile_photo():
     sql = """
         SELECT photo
@@ -64,6 +66,7 @@ def get_profile_photo():
     )
 
 @staff_bp.route('/profile', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
 def edit_profile():
     if request.content_type and request.content_type.startswith('multipart/form-data'):
         name = request.form.get("staff_name")
@@ -128,8 +131,9 @@ def edit_profile():
 
     return jsonify({"message": "Profile updated successfully"}), 200
 
-#---2)Profile change password
+
 @staff_bp.route('/change-password', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
 def change_password():
     data = request.get_json()
 
@@ -157,6 +161,7 @@ def change_password():
 # --- 2) NOTICE PAGE (View & Create) ---
 
 @staff_bp.route('/notices', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_notices():
     
     
@@ -180,6 +185,7 @@ def get_notices():
     return jsonify({"data": notices}), 200
 
 @staff_bp.route('/notices/<int:notice_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_notice(notice_id):
     sql = """
         SELECT n.notice_id, 
@@ -198,7 +204,9 @@ def get_notice(notice_id):
     if not notice:
         return jsonify({"error": "Not Found"}), 404
     return jsonify(notice[0]),200
+
 @staff_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_notice_pdf(notice_id):
     sql = """
         SELECT n.pdf_file
@@ -217,9 +225,8 @@ def get_notice_pdf(notice_id):
         headers={"Content-Disposition": "inline; filename=notice.pdf"}
     )
 
-
-
 @staff_bp.route('/notices', methods=['POST'])
+@token_required(allowed_roles=['staff'])
 def create_notice():
     staff_id = CURRENT_STAFF_ID
 
@@ -248,7 +255,9 @@ def create_notice():
     result = execute_write_query(query, values)
 
     return jsonify({"notice_id": result}), 201
+
 @staff_bp.route('/notices/<int:notice_id>', methods=['DELETE'])
+@token_required(allowed_roles=['staff'])
 def delete_notice(notice_id):
     
     query = """
@@ -268,6 +277,7 @@ def delete_notice(notice_id):
     return jsonify({"message": "Deleted"}), 200
 
 @staff_bp.route('/notices/count', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_notice_count():
     
     search = request.args.get('search', '')
@@ -284,9 +294,12 @@ def get_notice_count():
 
     return jsonify(result[0]), 200
 
+
+
 # ---3) ADD PAYMENTS (STUDENTS)
 
 @staff_bp.route('/add-payments', methods=['POST'])
+@token_required(allowed_roles=['staff'])
 def add_payments():
     data = request.get_json()
 
@@ -331,12 +344,9 @@ def add_payments():
     "message": "Payment notices created successfully",
     "count": created_count
     })
-    
-
-
-
 
 @staff_bp.route('/students', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_students():
     search = request.args.get("search")
     room = request.args.get("room")
@@ -362,9 +372,8 @@ def get_students():
     students = execute_read_query(sql, tuple(params))
     return jsonify(students)
 
-    
-
 @staff_bp.route('/rooms', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_rooms():
     sql1 = """
         SELECT room_id
@@ -374,10 +383,8 @@ def get_rooms():
     rooms = execute_read_query(sql1, (CURRENT_HALL_ID,))
     return jsonify(rooms)
 
-    
-
-
 @staff_bp.route('/batches', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_batches():
     sql = """ 
     SELECT DISTINCT SUBSTR(student_id, 1, 2) AS batch
@@ -389,9 +396,8 @@ def get_batches():
 
 # --- 3) MY PAYMENTS (Salary) ---
 
-# --- SALARY PAGES ---
-
 @staff_bp.route('/salary', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_paginated_salary():
     
     try:
@@ -435,8 +441,8 @@ def get_paginated_salary():
         }
     }), 200
 
-
 @staff_bp.route('/salary/<int:payment_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_salary_details(payment_id):
    
     sql = """
@@ -466,8 +472,11 @@ def get_salary_details(payment_id):
 
     return jsonify(salary_detail[0]), 200
 
+
+
 # --- 4) ASK FOR DONATIONS ---
 @staff_bp.route('/donations', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def list_donations():
     
     sql = """
@@ -492,7 +501,9 @@ def list_donations():
     """
     donations = execute_read_query(sql)
     return jsonify(donations), 200
+
 @staff_bp.route('/donations', methods=['POST'])
+@token_required(allowed_roles=['staff'])
 def create_staff_donation_request():
     """
     Staff creating a donation request. 
@@ -524,6 +535,7 @@ def create_staff_donation_request():
     return jsonify({"error": "Failed to create donation request"}), 500
 
 @staff_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
+@token_required(allowed_roles=['staff'])
 def delete_own_donation(donation_id):
     """
     Staff can only delete a donation if they were the one who asked for it
@@ -545,11 +557,10 @@ def delete_own_donation(donation_id):
 
 
 
-
-
 # --- 6) SEAT APPLICATIONS (Paginated & Details) ---
 
 @staff_bp.route('/seat-applications', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_paginated_applications():
     try:
         search = request.args.get("search")
@@ -615,6 +626,7 @@ def get_paginated_applications():
     }), 200
 
 @staff_bp.route('/seat-applications/<int:app_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
 def get_application_details(app_id):
     """
     Get all details for a single application, including student info.
@@ -641,8 +653,8 @@ def get_application_details(app_id):
         
     return jsonify(app_details[0]), 200
 
-
 @staff_bp.route('/seat-applications/<int:app_id>/priority', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
 def update_application_priority(app_id):
     """
     Update the priority value of a specific seat application.
@@ -674,9 +686,12 @@ def update_application_priority(app_id):
         
     return jsonify({"error": "Failed to update priority"}), 500
 
+
+
 # --- 8) STUDENT LIST & SEARCH ---
-# --- ADD STUDENT ENDPOINT ---
+
 @staff_bp.route('/add-students', methods=['POST'])
+@token_required(allowed_roles=['staff'])
 def add_student():
     """
     Create a new student, generate their user account, and email them the credentials.

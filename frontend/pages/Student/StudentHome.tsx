@@ -21,19 +21,30 @@ const StudentHome: React.FC = () => {
   const { theme } = useAppContext();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/student/dashboard');
-        if (response.ok) {
-          setData(await response.json());
-        }
-      } catch (error) {
-        console.error("Failed to fetch dashboard data");
-      } finally {
-        setLoading(false);
+  const fetchDashboard = async () => {
+    try {
+      const token = localStorage.getItem('hallmate_token');
+
+      const response = await fetch('http://localhost:5000/student/dashboard', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
       }
-    };
+
+      if (response.ok) {
+        setData(await response.json());
+      }
+    } catch (error) {
+      console.error("Failed to fetch dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchDashboard();
   }, []);
 
@@ -49,7 +60,7 @@ const StudentHome: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
+
         {/* Box 1: Room Status (No redirect) */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
           <div className="flex justify-between items-start">
@@ -74,7 +85,7 @@ const StudentHome: React.FC = () => {
         </div>
 
         {/* Box 2: Payments */}
-        <div 
+        <div
           onClick={() => navigate('/payments')}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
         >
@@ -102,7 +113,7 @@ const StudentHome: React.FC = () => {
         </div>
 
         {/* Box 3: Visitors */}
-        <div 
+        <div
           onClick={() => navigate('/visitors')}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
         >
@@ -128,11 +139,10 @@ const StudentHome: React.FC = () => {
         </div>
 
         {/* Box 4: Latest Notice (Wide) */}
-        <div 
+        <div
           onClick={() => navigate('/notices')}
-          className={`col-span-1 md:col-span-2 p-6 rounded-2xl shadow-sm border cursor-pointer hover:shadow-md transition-all group relative overflow-hidden ${
-            notice && !notice.is_read ? 'bg-white border-blue-200' : 'bg-gray-50/80 border-gray-100'
-          }`}
+          className={`col-span-1 md:col-span-2 p-6 rounded-2xl shadow-sm border cursor-pointer hover:shadow-md transition-all group relative overflow-hidden ${notice && !notice.is_read ? 'bg-white border-blue-200' : 'bg-gray-50/80 border-gray-100'
+            }`}
         >
           {notice && !notice.is_read && (
             <div className="absolute top-6 right-6 w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
@@ -154,12 +164,12 @@ const StudentHome: React.FC = () => {
             <p className="text-gray-500 italic mt-2">No recent notices available.</p>
           )}
           <div className={`mt-4 flex items-center gap-1 text-sm font-bold ${theme.text} group-hover:underline`}>
-             View Notice Board <ChevronRight className="w-4 h-4" />
+            View Notice Board <ChevronRight className="w-4 h-4" />
           </div>
         </div>
 
         {/* Box 5: Donations */}
-        <div 
+        <div
           onClick={() => navigate('/donations')}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
         >
@@ -180,7 +190,7 @@ const StudentHome: React.FC = () => {
         </div>
 
         {/* Box 6: Latest Complaint */}
-        <div 
+        <div
           onClick={() => navigate('/complaints')}
           className="col-span-1 md:col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
         >
@@ -192,12 +202,11 @@ const StudentHome: React.FC = () => {
               <p className="text-gray-500 text-sm font-medium flex items-center gap-2">
                 My Recent Complaint
                 {complaint && (
-                   <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider ${
-                     complaint.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 
-                     complaint.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                   }`}>
-                     {complaint.status}
-                   </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider ${complaint.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                      complaint.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                    {complaint.status}
+                  </span>
                 )}
               </p>
               {complaint ? (
@@ -208,7 +217,7 @@ const StudentHome: React.FC = () => {
             </div>
           </div>
           <div className={`flex items-center gap-1 text-sm font-bold ${theme.text}`}>
-             Complaint Center <ChevronRight className="w-4 h-4" />
+            Complaint Center <ChevronRight className="w-4 h-4" />
           </div>
         </div>
 

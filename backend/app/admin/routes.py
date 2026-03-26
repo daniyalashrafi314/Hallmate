@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.db import execute_read_query, execute_write_query
+from app.auth.middleware import token_required
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -7,6 +8,7 @@ CURRENT_HALL_ID = 1
 
 # --- 1) VIEW USERS (Students & Staff) ---
 @admin_bp.route('/students', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def get_all_students():
     sql = """
         SELECT s.*, h.name as hall_name, u.email_address 
@@ -17,6 +19,7 @@ def get_all_students():
     return jsonify(execute_read_query(sql))
 
 @admin_bp.route('/staff', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def get_all_staff():
     sql = """
         SELECT s.*, h.name as hall_name, u.email_address 
@@ -30,11 +33,13 @@ def get_all_staff():
 
 # --- 2) MANAGE SEAT APPLICATIONS ---
 @admin_bp.route('/seat-applications', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def view_applications():
     sql = "SELECT * FROM SEAT_APPLICATION WHERE status = 'Pending' ORDER BY priority_value DESC"
     return jsonify(execute_read_query(sql))
 
 @admin_bp.route('/seat-applications/<int:app_id>', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
 def process_application(app_id):
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
@@ -53,6 +58,7 @@ def process_application(app_id):
 # --- 3) SEAT ALLOCATION (The Core Logic) ---
 
 @admin_bp.route('/rooms', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def get_rooms_and_seats():
     sql = """
         SELECT r.room_id, r.capacity, s.seat_number, a.student_id
@@ -84,6 +90,7 @@ def get_rooms_and_seats():
     return jsonify(list(rooms_dict.values())), 200
 
 @admin_bp.route('/approved-students', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def get_approved_students_needing_seats():
     sql = """
         SELECT s.student_id, s.name, sa.priority_value
@@ -99,6 +106,7 @@ def get_approved_students_needing_seats():
     return jsonify(students if students else []), 200
 
 @admin_bp.route('/allocate', methods=['POST', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
 def allocate_seat():
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
@@ -122,6 +130,7 @@ def allocate_seat():
     return jsonify({"message": "Student successfully allocated"}), 200
 
 @admin_bp.route('/deallocate', methods=['POST', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
 def deallocate_seat():
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
@@ -148,10 +157,12 @@ def deallocate_seat():
 
 # --- 4) APPROVE DONATIONS ---
 @admin_bp.route('/donations/pending', methods=['GET'])
+@token_required(allowed_roles=['admin'])
 def get_pending_donations():
     return jsonify(execute_read_query("SELECT * FROM DONATIONS WHERE status = 'Pending'"))
 
 @admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
 def approve_donation(donation_id):
     # Handle CORS Preflight
     if request.method == 'OPTIONS':

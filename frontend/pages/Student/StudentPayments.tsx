@@ -32,7 +32,17 @@ const StudentPayments: React.FC = () => {
 
   const fetchPayments = async () => {
     try {
-      const response = await fetch(API_BASE);
+      const token = localStorage.getItem('hallmate_token');
+
+      const response = await fetch(API_BASE, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
+
       if (response.ok) {
         setPayments(await response.json());
       }

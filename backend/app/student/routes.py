@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, send_file
 from app.db import execute_read_query, execute_write_query
 from datetime import datetime
 import random, io
-
+from app.auth.middleware import token_required
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
 
@@ -12,6 +12,7 @@ CURRENT_STUDENT_ID = '2305108'
 # --- 1) STUDENT HOME ---
 
 @student_bp.route('/dashboard', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def get_student_dashboard():
     # 1. Profile & Allocation Info
     # Uses STUDENTS, HALLS, and ALLOCATIONS tables [cite: 84, 86, 96]
@@ -90,6 +91,7 @@ def get_student_dashboard():
 # --- 2) PAYMENTS (Fees) ---
 
 @student_bp.route('/payments', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def get_payments():
     # Join PAYMENTS and FEES, and use a CASE statement to custom sort the statuses
     sql = """
@@ -116,6 +118,7 @@ def get_payments():
     return jsonify(payments if payments else []), 200
 
 @student_bp.route('/payments/<int:payment_id>/pay', methods=['PUT'])
+@token_required(allowed_roles=['student'])
 def process_payment(payment_id):
     # Verify the fee actually belongs to the student before marking it as paid
     sql = """
@@ -135,6 +138,7 @@ def process_payment(payment_id):
 # --- 3) DONATIONS ---
 
 @student_bp.route('/donations', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def list_donations():
     # This query joins DONATIONS -> ASKS_FOR -> STUDENTS (and STAFFS)
     # COALESCE picks the first non-null value, perfectly handling the Student vs Staff logic
@@ -162,6 +166,7 @@ def list_donations():
     return jsonify(donations)
 
 @student_bp.route('/donations', methods=['POST'])
+@token_required(allowed_roles=['student'])
 def create_donation():
     data = request.get_json()
     desc = data.get('description')
@@ -185,6 +190,7 @@ def create_donation():
     return jsonify({"error": "Failed to create request"}), 500
 
 @student_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
+@token_required(allowed_roles=['student'])
 def withdraw_donation(donation_id):
     # Ensure a student can only delete their OWN pending donation
     sql = """
@@ -201,6 +207,7 @@ def withdraw_donation(donation_id):
     return jsonify({"error": "Cannot delete this donation"}), 403
 
 @student_bp.route('/donations/<int:donation_id>/pledge', methods=['POST'])
+@token_required(allowed_roles=['student'])
 def pledge_donation(donation_id):
     data = request.get_json()
     amount = data.get('pledgeAmount') # Matches frontend payload
@@ -236,6 +243,7 @@ def pledge_donation(donation_id):
 # --- 4) NOTICES ---
 
 @student_bp.route('/notices', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def get_notices():
     
     sql = """
@@ -258,6 +266,7 @@ def get_notices():
     return jsonify(notices if notices else []), 200
 
 @student_bp.route('/notices/<int:notice_id>/read', methods=['PUT'])
+@token_required(allowed_roles=['student'])
 def mark_notice_read(notice_id):
     # UPSERT: Insert the read state. If a row already exists, update it.
     sql = """
@@ -270,6 +279,7 @@ def mark_notice_read(notice_id):
     return jsonify({"message": "Marked as read"}), 200
 
 @student_bp.route('/notices/<int:notice_id>/hide', methods=['PUT'])
+@token_required(allowed_roles=['student'])
 def hide_notice(notice_id):
     sql = """
         INSERT INTO STUDENT_NOTICE_STATES (student_id, notice_id, is_hidden)
@@ -281,6 +291,7 @@ def hide_notice(notice_id):
     return jsonify({"message": "Notice hidden"}), 200
 
 @student_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def download_notice_pdf(notice_id):
     sql = "SELECT pdf_file, title FROM NOTICE WHERE notice_id = %s"
     result = execute_read_query(sql, (notice_id,))
@@ -301,6 +312,7 @@ def download_notice_pdf(notice_id):
 
 # --- 5) VISITORS ---
 @student_bp.route('/visitors', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def get_visitors():
     sql = """
         SELECT visitor_id as id, name, phone_number as phone, relationship, 
@@ -315,6 +327,7 @@ def get_visitors():
     return jsonify(visitors if visitors else []), 200
 
 @student_bp.route('/visitors', methods=['POST'])
+@token_required(allowed_roles=['student'])
 def add_visitor():
     data = request.get_json()
     
@@ -359,6 +372,7 @@ def add_visitor():
     return jsonify({"error": "Failed to add visitor"}), 400
 
 @student_bp.route('/visitors/<visitor_id>/cancel', methods=['DELETE'])
+@token_required(allowed_roles=['student'])
 def cancel_visitor(visitor_id):
     sql = """
         DELETE FROM VISITORS 
@@ -371,6 +385,7 @@ def cancel_visitor(visitor_id):
     return jsonify({"error": "Failed to cancel visitor or unauthorized"}), 400
 
 @student_bp.route('/visitors/<visitor_id>/hide', methods=['PUT'])
+@token_required(allowed_roles=['student'])
 def hide_visitor(visitor_id):
     # Soft delete a specific visitor
     sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE visitor_id = %s AND student_id = %s"
@@ -378,6 +393,7 @@ def hide_visitor(visitor_id):
     return jsonify({"message": "Visitor hidden from log"}), 200
 
 @student_bp.route('/visitors/clear', methods=['PUT'])
+@token_required(allowed_roles=['student'])
 def clear_visitors():
     # Soft delete ALL visitors for this student
     sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE student_id = %s"
@@ -388,7 +404,8 @@ def clear_visitors():
 
 # --- 6) COMPLAINTS ---
 
-@student_bp.route('/complaints', methods=['GET'])
+@student_bp.route('/complaints', methods=['GET'])#
+@token_required(allowed_roles=['student'])
 def get_complaints():
     sql = """
         SELECT complaint_id as id, complaint_type as type, description, 
@@ -401,6 +418,7 @@ def get_complaints():
     return jsonify(complaints if complaints else []), 200
 
 @student_bp.route('/complaints', methods=['POST'])
+@token_required(allowed_roles=['student'])
 def add_complaint():
     data = request.get_json()
     c_type = data.get('type')
@@ -421,6 +439,7 @@ def add_complaint():
     return jsonify({"error": "Failed to file complaint"}), 500
 
 @student_bp.route('/complaints/<int:complaint_id>', methods=['DELETE'])
+@token_required(allowed_roles=['student'])
 def remove_complaint(complaint_id):
     # Only allow deletion if the complaint belongs to the student AND is still 'Pending'
     sql = "DELETE FROM COMPLAINTS WHERE complaint_id = %s AND student_id = %s AND status = 'Pending'"
@@ -433,8 +452,6 @@ def remove_complaint(complaint_id):
 
 
 # --- 7) SEAT APPLICATION ---
-
-from flask import request, jsonify
 
 # --- HELPER FUNCTIONS & CONSTANTS ---
 DEPARTMENT_CODES = {
@@ -464,6 +481,7 @@ def derive_department(student_id):
     return "Unknown"
 
 @student_bp.route('/seat-application/status', methods=['GET'])
+@token_required(allowed_roles=['student'])
 def get_application_status():
     # 1. Fetch current application status
     app_sql = "SELECT status, description FROM SEAT_APPLICATION WHERE student_id = %s ORDER BY date DESC LIMIT 1"
@@ -498,6 +516,7 @@ def get_application_status():
     }), 200
 
 @student_bp.route('/seat-application', methods=['POST'])
+@token_required(allowed_roles=['student'])
 def submit_application():
     data = request.get_json()
     reasoning = data.get('reasoning')
@@ -522,6 +541,7 @@ def submit_application():
     return jsonify({"error": "Failed to submit"}), 500
 
 @student_bp.route('/seat-application/cancel', methods=['DELETE'])
+@token_required(allowed_roles=['student'])
 def cancel_application():
     # Deletes the application (Used for both Canceling a pending one, or acknowledging a refused one)
     sql = "DELETE FROM SEAT_APPLICATION WHERE student_id = %s AND status IN ('Pending', 'Refused')"

@@ -40,8 +40,20 @@ const StudentDonations: React.FC = () => {
   const fetchDonations = async (showSpinner = true) => {
     try {
       if (showSpinner) setLoading(true);
-      const response = await fetch(API_BASE);
+      const token = localStorage.getItem('hallmate_token');
+
+      const response = await fetch(API_BASE, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Handle expired token
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to fetch donations');
+      
       const data = await response.json();
       setDonations(data);
       setError(null);

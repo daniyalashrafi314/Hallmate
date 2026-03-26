@@ -35,11 +35,26 @@ const ProvostRooms: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const roomRes = await fetch(`${API_BASE}/rooms`);
+      const token = localStorage.getItem('hallmate_token');
+      // Create a reusable headers object
+      const authHeaders = { 'Authorization': `Bearer ${token}` };
+
+      // Fetch Rooms
+      const roomRes = await fetch(`${API_BASE}/rooms`, { headers: authHeaders });
+      if (roomRes.status === 401 || roomRes.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
       if (roomRes.ok) setRooms(await roomRes.json());
       
-      const studentRes = await fetch(`${API_BASE}/approved-students`);
+      // Fetch Approved Students
+      const studentRes = await fetch(`${API_BASE}/approved-students`, { headers: authHeaders });
+      if (studentRes.status === 401 || studentRes.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
       if (studentRes.ok) setApprovedStudents(await studentRes.json());
+      
     } catch (error) {
       console.error("Failed to fetch data");
     } finally {

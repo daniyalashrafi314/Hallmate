@@ -40,6 +40,7 @@ const ApplicationListView: React.FC = () => {
       setLoading(true);
       setError(null);
 
+      const token = localStorage.getItem('hallmate_token');
       const offset = (page - 1) * ITEMS_PER_PAGE;
       let url = `${API_BASE_URL}/seat-applications?limit=${ITEMS_PER_PAGE}&offset=${offset}&status_filter=Pending`;
 
@@ -47,7 +48,14 @@ const ApplicationListView: React.FC = () => {
         url += `&search=${encodeURIComponent(search)}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to fetch applications');

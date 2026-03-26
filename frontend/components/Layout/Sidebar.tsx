@@ -1,25 +1,19 @@
-
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
-  Home, 
-  Users, 
-  CreditCard, 
-  FileText, 
-  ShieldCheck, 
-  Grid, 
-  Calendar,
-  Layers,
-  LogOut,
-  UserCircle,
-  ClipboardList,
-  Heart
+  Home, Users, CreditCard, FileText, ShieldCheck, Grid, 
+  Calendar, Layers, LogOut, UserCircle, ClipboardList, Heart
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { UserRole } from '../../types';
 
 const Sidebar: React.FC = () => {
-  const { userRole, setUserRole, theme, user } = useAppContext();
+  // 1. Pull the new logout function from Context
+  const { userRole, theme, user, logout } = useAppContext();
+  const navigate = useNavigate();
+
+  // Safety check: if userRole is somehow null, don't crash
+  if (!userRole) return null;
 
   const navItems = {
     [UserRole.STUDENT]: [
@@ -46,6 +40,12 @@ const Sidebar: React.FC = () => {
       { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Residency Approvals', icon: ShieldCheck },
     ]
+  };
+
+  // 2. The actual logout handler
+  const handleSignOut = () => {
+    logout(); // Clears context and localStorage
+    navigate('/login'); // Sends them to login screen
   };
 
   return (
@@ -105,31 +105,23 @@ const Sidebar: React.FC = () => {
       </nav>
 
       <div className="absolute bottom-0 left-0 w-full p-6 border-t border-white/10 space-y-4">
-        {/* Role Switcher for Demo */}
-        <div className="bg-white/5 p-3 rounded-lg">
-          <label className="text-[10px] uppercase opacity-50 block mb-2 font-bold">Switch Role (Dev)</label>
-          <select 
-            value={userRole}
-            onChange={(e) => setUserRole(e.target.value as UserRole)}
-            className="w-full bg-transparent text-sm outline-none cursor-pointer"
-          >
-            <option value={UserRole.STUDENT} className="text-black">Student View</option>
-            <option value={UserRole.STAFF} className="text-black">Staff View</option>
-            <option value={UserRole.PROVOST} className="text-black">Provost View</option>
-          </select>
-        </div>
+        {/* DEV SWITCHER REMOVED - Roles are now securely managed by backend tokens! */}
 
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
             <UserCircle className="w-6 h-6" />
           </div>
           <div className="overflow-hidden">
-            <p className="text-sm font-semibold truncate">{user?.name}</p>
+            <p className="text-sm font-semibold truncate">{user?.id}</p>
             <p className="text-[10px] opacity-60 uppercase">{userRole}</p>
           </div>
         </div>
         
-        <button className="flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors">
+        {/* 3. Wire up the onClick to our new handler */}
+        <button 
+          onClick={handleSignOut}
+          className="flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors w-full text-left"
+        >
           <LogOut className="w-4 h-4" />
           Sign Out
         </button>

@@ -1,12 +1,14 @@
-
 import React, { useState, createContext, useContext, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { UserRole, User } from './types';
-import { THEME_CONFIG, MOCK_USER } from './constants';
+import { THEME_CONFIG } from './constants';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 
-// Pages
+// Auth Pages (You will create these next)
+import Login from './pages/Login/Login'
+
+// Student Pages
 import StudentHome from './pages/Student/StudentHome';
 import StudentSeatApplication from './pages/Student/StudentSeatApplication';
 import StudentPayments from './pages/Student/StudentPayments';
@@ -15,6 +17,7 @@ import StudentNotices from './pages/Student/StudentNotices';
 import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
 
+// Staff Pages
 import StaffVisitorLogs from './pages/Staff/StaffVisitorLogs';
 import StaffProfile from './pages/Staff/StaffProfile';
 import StaffAddPayments from './pages/Staff/StaffAddPayments';
@@ -24,14 +27,17 @@ import StaffNotices from './pages/Staff/StaffNotices';
 import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 
+// Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 
+// 1. Update Context to handle actual Authentication state
 interface AppContextType {
   user: User | null;
-  userRole: UserRole;
-  setUserRole: (role: UserRole) => void;
+  userRole: UserRole | null; // Null means not logged in
   theme: any;
+  login: (token: string, userId: string, role: UserRole) => void;
+  logout: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -42,53 +48,104 @@ export const useAppContext = () => {
   return context;
 };
 
+// 2. The Bouncer Component
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: UserRole[] }) => {
+  const { userRole } = useAppContext();
+  const token = localStorage.getItem('hallmate_token');
+
+  if (!token || !userRole) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // If specific roles are required, check them
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
+    return <Navigate to="/dashboard" replace />; // Send them back to their own dashboard
+  }
+
+  return <>{children}</>;
+};
+
 const App: React.FC = () => {
-  const [userRole, setUserRole] = useState<UserRole>(UserRole.STUDENT);
-  const user = MOCK_USER[userRole];
-  const theme = THEME_CONFIG[userRole];
+  // 3. Initialize state from LocalStorage so sessions persist on refresh
+  const [userRole, setUserRole] = useState<UserRole | null>(
+    (localStorage.getItem('user_role') as UserRole) || null
+  );
+  
+  // In a real app, you might fetch the full user object from the backend using the ID
+  const [user, setUser] = useState<User | null>(
+    localStorage.getItem('user_id') ? { id: localStorage.getItem('user_id')!, name: 'Logged In User', email: '', phone: '' } : null
+  );
+
+  // Default theme to Student if not logged in just for the login screen styling
+  const theme = THEME_CONFIG[userRole || UserRole.STUDENT];
+
+  // Auth Functions
+  const login = (token: string, userId: string, role: UserRole) => {
+    localStorage.setItem('hallmate_token', token);
+    localStorage.setItem('user_id', userId);
+    localStorage.setItem('user_role', role);
+    setUserRole(role);
+    setUser({ id: userId, name: userId, email: '', phone: '' }); // Simplified user obj
+  };
+
+  const logout = () => {
+    localStorage.clear();
+    setUserRole(null);
+    setUser(null);
+  };
 
   return (
-    <AppContext.Provider value={{ user, userRole, setUserRole, theme }}>
+    <AppContext.Provider value={{ user, userRole, theme, login, logout }}>
       <HashRouter>
-        <div className={`flex min-h-screen ${theme.bg} transition-colors duration-300`}>
-          <Sidebar />
-          <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300">
-            <Header />
-            <main className="p-4 md:p-8 flex-1 overflow-auto">
-              <Routes>
-                {/* Auth-less dev switch routes */}
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                
-                {/* Student Routes */}
-                <Route path="/dashboard" element={<StudentHome />} />
-                <Route path="/seat-application" element={<StudentSeatApplication />} />
-                <Route path="/payments" element={<StudentPayments />} />
-                <Route path="/visitors" element={<StudentVisitors />} />
-                <Route path="/notices" element={<StudentNotices />} />
-                <Route path="/donations" element={<StudentDonations />} />
-                <Route path="/complaints" element={<StudentComplaints />} />
+        <Routes>
+          {/* --- PUBLIC ROUTES --- */}
+          <Route path="/login" element={userRole ? <Navigate to="/dashboard" replace /> : <Login />} />
+          
+          {/* --- PROTECTED APP LAYOUT --- */}
+          <Route 
+            path="/*" 
+            element={
+              <ProtectedRoute>
+                <div className={`flex min-h-screen ${theme.bg} transition-colors duration-300`}>
+                  <Sidebar />
+                  <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300">
+                    <Header />
+                    <main className="p-4 md:p-8 flex-1 overflow-auto">
+                      <Routes>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        
+                        {/* Student Routes */}
+                        <Route path="/dashboard" element={userRole === UserRole.STUDENT ? <StudentHome /> : <StaffVisitorLogs />} />
+                        <Route path="/seat-application" element={<StudentSeatApplication />} />
+                        <Route path="/payments" element={<StudentPayments />} />
+                        <Route path="/visitors" element={<StudentVisitors />} />
+                        <Route path="/notices" element={<StudentNotices />} />
+                        <Route path="/donations" element={userRole === UserRole.STUDENT ? <StudentDonations /> : <StaffDonations />} />
+                        <Route path="/complaints" element={<StudentComplaints />} />
 
-                {/* Staff Routes */}
-                <Route path="/dashboard" element={<StaffVisitorLogs />} />
-                <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
-                <Route path="/add-payments" element={<StaffAddPayments />} />
-                <Route path="/add-students" element={<StaffAddStudents />} />
-                <Route path="/donations" element={<StaffDonations />} />
-                <Route path="/salary" element={<StaffSalary />} />
-                <Route path="/seat-applications" element={<StaffSeatApplications />} />
-                <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />
-                <Route path="/profile" element={<StaffProfile />} />
-                <Route path="/notices-manage" element={<StaffNotices />} />
+                        {/* Staff Routes */}
+                        <Route path="/visitor-logs" element={<StaffVisitorLogs />} />
+                        <Route path="/add-payments" element={<StaffAddPayments />} />
+                        <Route path="/add-students" element={<StaffAddStudents />} />
+                        <Route path="/salary" element={<StaffSalary />} />
+                        <Route path="/seat-applications" element={<StaffSeatApplications />} />
+                        <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />
+                        <Route path="/profile" element={<StaffProfile />} />
+                        <Route path="/notices-manage" element={<StaffNotices />} />
 
-                {/* Provost Routes */}
-                <Route path="/rooms" element={<ProvostRooms />} />
-                <Route path="/users" element={<ProvostUserManagement />} />
+                        {/* Provost Routes */}
+                        <Route path="/rooms" element={<ProvostRooms />} />
+                        <Route path="/users" element={<ProvostUserManagement />} />
 
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </main>
-          </div>
-        </div>
+                        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                      </Routes>
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+        </Routes>
       </HashRouter>
     </AppContext.Provider>
   );

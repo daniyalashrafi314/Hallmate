@@ -36,16 +36,24 @@ const StaffSalary: React.FC = () => {
   const [selectedSalary, setSelectedSalary] = useState<SalaryDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // Fetch paginated salaries
   const fetchSalaries = async (page: number) => {
     try {
       setLoading(true);
       setError(null);
       
+      const token = localStorage.getItem('hallmate_token');
       const offset = (page - 1) * ITEMS_PER_PAGE;
+      
       const response = await fetch(
-        `${API_BASE_URL}/salary?limit=${ITEMS_PER_PAGE}&offset=${offset}`
+        `${API_BASE_URL}/salary?limit=${ITEMS_PER_PAGE}&offset=${offset}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
       );
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to fetch salary payments');

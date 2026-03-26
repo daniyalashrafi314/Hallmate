@@ -39,7 +39,17 @@ const StudentSeatApplication: React.FC = () => {
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch(`${API_BASE}/status`);
+      const token = localStorage.getItem('hallmate_token');
+
+      const response = await fetch(`${API_BASE}/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login'; 
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
         setAppStatus(data.status);

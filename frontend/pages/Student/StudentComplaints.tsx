@@ -15,7 +15,7 @@ const StudentComplaints: React.FC = () => {
   const { theme } = useAppContext();
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,7 +29,17 @@ const StudentComplaints: React.FC = () => {
 
   const fetchComplaints = async () => {
     try {
-      const response = await fetch(API_BASE);
+      const token = localStorage.getItem('hallmate_token');
+
+      const response = await fetch(API_BASE, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       if (response.ok) {
         setComplaints(await response.json());
       }
@@ -39,7 +49,6 @@ const StudentComplaints: React.FC = () => {
       setLoading(false);
     }
   };
-
   useEffect(() => { fetchComplaints(); }, []);
 
   const handleAddComplaint = async (e: React.FormEvent) => {
@@ -104,7 +113,7 @@ const StudentComplaints: React.FC = () => {
           <h2 className={`text-2xl font-bold ${theme.text}`}>My Complaints</h2>
           <p className="text-gray-500">Report issues securely to the hall administration.</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowModal(true)}
           className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-bold ${theme.primary} shadow-md hover:shadow-lg transition-all`}
         >
@@ -138,14 +147,14 @@ const StudentComplaints: React.FC = () => {
                   <span className="text-sm text-gray-400 ml-auto">{complaint.date}</span>
                 </div>
                 <p className="text-gray-600 mt-3">{complaint.description}</p>
-                
+
                 <div className="flex items-center justify-between mt-6">
                   <div className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-bold ${getStatusColor(complaint.status)}`}>
                     {getStatusIcon(complaint.status)} {complaint.status}
                   </div>
-                  
+
                   {complaint.status === 'Pending' && (
-                    <button 
+                    <button
                       onClick={() => handleDelete(complaint.id)}
                       className="text-gray-400 hover:text-red-500 flex items-center gap-1 text-sm font-bold transition-colors"
                     >
@@ -167,13 +176,13 @@ const StudentComplaints: React.FC = () => {
               <h3 className="text-xl font-bold text-gray-900">File a Complaint</h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
             </div>
-            
+
             <form onSubmit={handleAddComplaint} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Issue Category *</label>
-                <select 
-                  value={formData.type} 
-                  onChange={e => setFormData({...formData, type: e.target.value})}
+                <select
+                  value={formData.type}
+                  onChange={e => setFormData({ ...formData, type: e.target.value })}
                   className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500 bg-white"
                 >
                   <option value="Room">Room / Furniture</option>
@@ -185,25 +194,25 @@ const StudentComplaints: React.FC = () => {
                   <option value="Other">Other</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description *</label>
-                <textarea 
-                  required 
+                <textarea
+                  required
                   rows={4}
                   placeholder="Please describe the issue in detail..."
-                  value={formData.description} 
-                  onChange={e => setFormData({...formData, description: e.target.value})} 
-                  className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500 resize-none" 
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
               <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="anonymous"
                   checked={formData.is_anonymous}
-                  onChange={e => setFormData({...formData, is_anonymous: e.target.checked})}
+                  onChange={e => setFormData({ ...formData, is_anonymous: e.target.checked })}
                   className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
                 />
                 <label htmlFor="anonymous" className="text-sm font-medium text-indigo-900 cursor-pointer">
@@ -214,9 +223,9 @@ const StudentComplaints: React.FC = () => {
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 Staff will not see your name, but you can still track the status of this complaint here.
               </p>
-              
-              <button 
-                type="submit" 
+
+              <button
+                type="submit"
                 disabled={isSubmitting}
                 className={`w-full py-3 mt-4 rounded-xl font-bold text-white transition-all ${isSubmitting ? 'bg-gray-400' : theme.primary}`}
               >
