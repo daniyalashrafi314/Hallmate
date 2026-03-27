@@ -6,25 +6,25 @@ import re
 import secrets
 import string
 from app.auth.middleware import token_required
+
 # 1. Define the Blueprint
-# We define it here so other files (like your main app.py) can import it.
 staff_bp = Blueprint('staff', __name__)
 
-# --- MOCK DATA ---
-# Hardcoded for development; will be replaced by session logic later.
-CURRENT_STAFF_ID = 'STF0000001'
-CURRENT_HALL_ID = 1
+# --- HELPER FUNCTION ---
+def get_current_hall_id(staff_id):
+    """Dynamically fetches the hall_id for the currently logged-in staff member."""
+    sql = "SELECT hall_id FROM STAFFS WHERE staff_id = %s"
+    result = execute_read_query(sql, (staff_id,))
+    return result[0]['hall_id'] if result else None
+
 
 # --- 1) STAFF PROFILE PAGE ---
-#Few issues that will be fixed later, there is a search bar in profile page which is not necessary
-#Notification does not work
-#Name in the lower section of the sidebar is still not connected to db
-#The photo section is missing and needs to be fixed
 
 @staff_bp.route('/profile', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_profile():
-    # We join STAFFS and USERS to get all details including email
+    current_staff_id = request.current_user_id
+    
     sql = """
         SELECT 
         s.staff_id,
@@ -41,8 +41,7 @@ def get_profile():
         JOIN HALLS h ON s.hall_id = h.hall_id
         WHERE s.staff_id = %s
     """
-    # We pass a tuple (CURRENT_STAFF_ID,) to safely insert the variable into SQL
-    profile = execute_read_query(sql, (CURRENT_STAFF_ID,))
+    profile = execute_read_query(sql, (current_staff_id,))
     
     if profile:
         return jsonify(profile[0])
@@ -51,23 +50,27 @@ def get_profile():
 @staff_bp.route('/profile/photo', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_profile_photo():
+    current_staff_id = request.current_user_id
+    
     sql = """
         SELECT photo
         FROM STAFFS
         WHERE staff_id = %s
         """
-    result = execute_read_query(sql, (CURRENT_STAFF_ID,))
+    result = execute_read_query(sql, (current_staff_id,))
     if not result or not result[0].get('photo'):
         return jsonify({"error": "No photo found"}), 404
     return Response(
         result[0]['photo'],
-        mimetype='image/jpeg', # You can adjust to 'image/png' if needed, but 'jpeg' is widely compatible
+        mimetype='image/jpeg', 
         headers={"Content-Disposition": "inline; filename=profile_photo.jpg"}
     )
 
 @staff_bp.route('/profile', methods=['PUT'])
 @token_required(allowed_roles=['staff'])
 def edit_profile():
+    current_staff_id = request.current_user_id
+    
     if request.content_type and request.content_type.startswith('multipart/form-data'):
         name = request.form.get("staff_name")
         phone = request.form.get("phone_number")
@@ -91,7 +94,7 @@ def edit_profile():
         staff_update_fields.append("photo = %s")
         staff_update_values.append(photo_bytes)
         
-    staff_update_values.append(CURRENT_STAFF_ID)
+    staff_update_values.append(current_staff_id)
 
     sql1 = f"""
             UPDATE STAFFS
@@ -99,28 +102,28 @@ def edit_profile():
             WHERE staff_id = %s
             """
     execute_write_query(sql1, tuple(staff_update_values))
+    
     sql2 = """
         UPDATE USERS
         SET email_address = %s
         WHERE user_id = (
             SELECT user_id
             FROM STAFFS
-            WHERE staff_id =%s
+            WHERE staff_id = %s
         )"""
-    execute_write_query(sql2, (email, CURRENT_STAFF_ID))
+    execute_write_query(sql2, (email, current_staff_id))
+    
     sql3 = """
         SELECT role, hall_id
         FROM STAFFS
         WHERE staff_id = %s
         """
-    result = execute_read_query(sql3, (CURRENT_STAFF_ID,)) # Added comma for proper tuple
+    result = execute_read_query(sql3, (current_staff_id,)) 
     
     if result:
-        # These variables are now safely scoped inside this block
         role = result[0]["role"]
         hall_id = result[0]["hall_id"]
 
-        # Only check the role if we successfully retrieved it
         if role and role.lower() == "provost":
             sql4 = """
             UPDATE HALLS
@@ -131,10 +134,10 @@ def edit_profile():
 
     return jsonify({"message": "Profile updated successfully"}), 200
 
-
 @staff_bp.route('/change-password', methods=['PUT'])
 @token_required(allowed_roles=['staff'])
 def change_password():
+    current_staff_id = request.current_user_id
     data = request.get_json()
 
     new_password = data.get("new_password")
@@ -144,6 +147,7 @@ def change_password():
 
     if new_password != confirm_password:
         return jsonify({"error": "Passwords do not match"}), 400
+        
     sql = """
         UPDATE USERS
         SET password = %s
@@ -153,23 +157,23 @@ def change_password():
             WHERE staff_id = %s
             )
         """
-    execute_write_query(sql, (new_password, CURRENT_STAFF_ID))
+    execute_write_query(sql, (new_password, current_staff_id))
     return jsonify({"message": "Password changed successfully"})
-
-
 
 # --- 2) NOTICE PAGE (View & Create) ---
 
 @staff_bp.route('/notices', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_notices():
-    
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
     
     try:
         limit = min(int(request.args.get('limit', 10)), 50)
         offset = int(request.args.get('offset', 0))
     except ValueError:
         return jsonify({"error": "Invalid pagination params"}), 400
+        
     sql = """
         SELECT n.notice_id, 
         n.title, 
@@ -181,12 +185,15 @@ def get_notices():
         ORDER BY n.created_at DESC
         LIMIT %s OFFSET %s;
     """
-    notices = execute_read_query(sql, (CURRENT_HALL_ID, limit, offset))
+    notices = execute_read_query(sql, (current_hall_id, limit, offset))
     return jsonify({"data": notices}), 200
 
 @staff_bp.route('/notices/<int:notice_id>', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_notice(notice_id):
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     sql = """
         SELECT n.notice_id, 
         n.title, 
@@ -198,25 +205,26 @@ def get_notice(notice_id):
         JOIN STAFFS s ON n.staff_id = s.staff_id
         WHERE n.notice_id = %s
         AND s.hall_id = %s
-        
     """
-    notice = execute_read_query(sql, (notice_id, CURRENT_HALL_ID))
+    notice = execute_read_query(sql, (notice_id, current_hall_id))
     if not notice:
         return jsonify({"error": "Not Found"}), 404
-    return jsonify(notice[0]),200
+    return jsonify(notice[0]), 200
 
 @staff_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_notice_pdf(notice_id):
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     sql = """
         SELECT n.pdf_file
         FROM NOTICE n
         JOIN STAFFS s ON n.staff_id = s.staff_id
         WHERE n.notice_id = %s
         AND s.hall_id = %s
-        
         """
-    result = execute_read_query(sql, (notice_id, CURRENT_HALL_ID))
+    result = execute_read_query(sql, (notice_id, current_hall_id))
     if not result or not result[0].get('pdf_file'):
         return jsonify({"error": "No Pdf"}), 404
     return Response(
@@ -228,7 +236,7 @@ def get_notice_pdf(notice_id):
 @staff_bp.route('/notices', methods=['POST'])
 @token_required(allowed_roles=['staff'])
 def create_notice():
-    staff_id = CURRENT_STAFF_ID
+    current_staff_id = request.current_user_id
 
     title = request.form.get('title')
     description = request.form.get('description')
@@ -250,8 +258,7 @@ def create_notice():
         VALUES (%s, %s, %s, %s)
         RETURNING notice_id;
     """
-
-    values = (staff_id, title, description, pdf_bytes)
+    values = (current_staff_id, title, description, pdf_bytes)
     result = execute_write_query(query, values)
 
     return jsonify({"notice_id": result}), 201
@@ -259,6 +266,8 @@ def create_notice():
 @staff_bp.route('/notices/<int:notice_id>', methods=['DELETE'])
 @token_required(allowed_roles=['staff'])
 def delete_notice(notice_id):
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
     
     query = """
         DELETE FROM NOTICE n
@@ -268,8 +277,7 @@ def delete_notice(notice_id):
         AND s.hall_id = %s
         RETURNING n.notice_id;
     """
-
-    result = execute_write_query(query, (notice_id, CURRENT_HALL_ID))
+    result = execute_write_query(query, (notice_id, current_hall_id))
 
     if not result:
         return jsonify({"error": "Unauthorized or not found"}), 403
@@ -279,6 +287,8 @@ def delete_notice(notice_id):
 @staff_bp.route('/notices/count', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_notice_count():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
     
     search = request.args.get('search', '')
 
@@ -289,28 +299,25 @@ def get_notice_count():
         WHERE s.hall_id = %s
         AND (n.title ILIKE %s OR n.description ILIKE %s);
     """
-
-    result = execute_read_query(query, (CURRENT_HALL_ID, f"%{search}%", f"%{search}%"))
-
+    result = execute_read_query(query, (current_hall_id, f"%{search}%", f"%{search}%"))
     return jsonify(result[0]), 200
-
-
 
 # ---3) ADD PAYMENTS (STUDENTS)
 
 @staff_bp.route('/add-payments', methods=['POST'])
 @token_required(allowed_roles=['staff'])
 def add_payments():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     data = request.get_json()
-
     student_ids = data.get("student_ids")
     payment_type = data.get("payment_type")
     amount = data.get("amount")
     due_time = data.get("due_time")
     
-
     if not student_ids or not amount or not due_time or not payment_type:
-        return jsonify({"error":"Missing fields"}),400
+        return jsonify({"error":"Missing fields"}), 400
     
     sql = """
     SELECT student_id
@@ -318,9 +325,10 @@ def add_payments():
     WHERE student_id = ANY(%s)
     AND hall_id = %s
     """
-    valid_students = execute_read_query(sql, (student_ids, CURRENT_HALL_ID))
+    valid_students = execute_read_query(sql, (student_ids, current_hall_id))
     if not valid_students:
         return jsonify({"error": "No valid students found"}), 400
+        
     sql_payment ="""
     INSERT INTO PAYMENTS (payment_type, amount, due_time, status)
     VALUES (%s, %s, %s, %s)
@@ -339,33 +347,39 @@ def add_payments():
         )
         payment_id = payment_result[0]["payment_id"]
         execute_write_query(sql_fees, (payment_id, student["student_id"]))
-        created_count+=1
+        created_count += 1
+        
     return jsonify({
-    "message": "Payment notices created successfully",
-    "count": created_count
+        "message": "Payment notices created successfully",
+        "count": created_count
     })
 
 @staff_bp.route('/students', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_students():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     search = request.args.get("search")
     room = request.args.get("room")
     batch = request.args.get("batch")
+    
     sql = """
         SELECT s.student_id, s.name, a.room_id
         FROM STUDENTS s
         LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id
         WHERE s.hall_id = %s
         """
-    params = [CURRENT_HALL_ID]
+    params = [current_hall_id]
+    
     if room:
-        sql+= " AND a.room_id = %s"
+        sql += " AND a.room_id = %s"
         params.append(room)
     if batch:
-        sql+= " AND SUBSTR(s.student_id, 1, 2) = %s"
+        sql += " AND SUBSTR(s.student_id, 1, 2) = %s"
         params.append(batch)
     if search:
-        sql+=" AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
         params.append(f"%{search}%")
         params.append(f"%{search}%")
 
@@ -375,23 +389,29 @@ def get_students():
 @staff_bp.route('/rooms', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_rooms():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     sql1 = """
         SELECT room_id
         FROM ROOMS
         WHERE hall_id = %s
     """
-    rooms = execute_read_query(sql1, (CURRENT_HALL_ID,))
+    rooms = execute_read_query(sql1, (current_hall_id,))
     return jsonify(rooms)
 
 @staff_bp.route('/batches', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_batches():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     sql = """ 
     SELECT DISTINCT SUBSTR(student_id, 1, 2) AS batch
     FROM STUDENTS
     WHERE hall_id = %s
     """
-    batches = execute_read_query(sql, (CURRENT_HALL_ID,))
+    batches = execute_read_query(sql, (current_hall_id,))
     return jsonify(batches)
 
 # --- 3) MY PAYMENTS (Salary) ---
@@ -399,9 +419,10 @@ def get_batches():
 @staff_bp.route('/salary', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_paginated_salary():
+    current_staff_id = request.current_user_id
     
     try:
-        limit = min(int(request.args.get('limit', 10)), 50)  # Max 50 per page
+        limit = min(int(request.args.get('limit', 10)), 50)  
         offset = int(request.args.get('offset', 0))
     except ValueError:
         return jsonify({"error": "Invalid pagination parameters"}), 400
@@ -420,16 +441,15 @@ def get_paginated_salary():
         ORDER BY p.due_time DESC NULLS LAST
         LIMIT %s OFFSET %s;
     """
-    salaries = execute_read_query(sql, (CURRENT_STAFF_ID, limit, offset))
+    salaries = execute_read_query(sql, (current_staff_id, limit, offset))
     
-    # Optionally, you can also return a total count for frontend pagination controls
     count_sql = """
         SELECT COUNT(*) as total
         FROM PAYMENTS p
         JOIN SALARY s ON p.payment_id = s.payment_id
         WHERE s.staff_id = %s
     """
-    total_count = execute_read_query(count_sql, (CURRENT_STAFF_ID,))
+    total_count = execute_read_query(count_sql, (current_staff_id,))
     total = total_count[0]['total'] if total_count else 0
 
     return jsonify({
@@ -444,6 +464,7 @@ def get_paginated_salary():
 @staff_bp.route('/salary/<int:payment_id>', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_salary_details(payment_id):
+    current_staff_id = request.current_user_id
    
     sql = """
         SELECT 
@@ -463,22 +484,18 @@ def get_salary_details(payment_id):
         WHERE p.payment_id = %s 
         AND s.staff_id = %s;
     """
-    
-    # Pass CURRENT_STAFF_ID to prevent IDOR (Insecure Direct Object Reference)
-    salary_detail = execute_read_query(sql, (payment_id, CURRENT_STAFF_ID))
+    salary_detail = execute_read_query(sql, (payment_id, current_staff_id))
 
     if not salary_detail:
         return jsonify({"error": "Salary payment not found or unauthorized access"}), 404
 
     return jsonify(salary_detail[0]), 200
 
-
-
 # --- 4) ASK FOR DONATIONS ---
+
 @staff_bp.route('/donations', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def list_donations():
-    
     sql = """
         SELECT 
             d.donation_id as id,
@@ -505,10 +522,8 @@ def list_donations():
 @staff_bp.route('/donations', methods=['POST'])
 @token_required(allowed_roles=['staff'])
 def create_staff_donation_request():
-    """
-    Staff creating a donation request. 
-    Inserts into DONATIONS and links to the staff_id in ASKS_FOR.
-    """
+    current_staff_id = request.current_user_id
+    
     data = request.get_json()
     desc = data.get('description')
     end_date = data.get('endDate')
@@ -516,7 +531,6 @@ def create_staff_donation_request():
     if not desc or not end_date:
         return jsonify({"error": "Description and end date are required"}), 400
 
-    # CTE logic: Insert donation first, then use the ID to insert into ASKS_FOR
     sql = """
         WITH new_donation AS (
             INSERT INTO DONATIONS (description, end_date, status) 
@@ -526,9 +540,7 @@ def create_staff_donation_request():
         INSERT INTO ASKS_FOR (donation_id, staff_id, student_id)
         SELECT donation_id, %s, NULL FROM new_donation;
     """
-    
-    # We pass CURRENT_STAFF_ID as the third parameter
-    success = execute_write_query(sql, (desc, end_date, CURRENT_STAFF_ID))
+    success = execute_write_query(sql, (desc, end_date, current_staff_id))
     
     if success:
         return jsonify({"message": "Staff donation request created"}), 201
@@ -537,10 +549,8 @@ def create_staff_donation_request():
 @staff_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
 @token_required(allowed_roles=['staff'])
 def delete_own_donation(donation_id):
-    """
-    Staff can only delete a donation if they were the one who asked for it
-    and if it hasn't been completed/closed yet.
-    """
+    current_staff_id = request.current_user_id
+    
     sql = """
         DELETE FROM DONATIONS 
         WHERE donation_id = %s 
@@ -549,27 +559,27 @@ def delete_own_donation(donation_id):
             SELECT donation_id FROM ASKS_FOR WHERE staff_id = %s
         )
     """
-    success = execute_write_query(sql, (donation_id, CURRENT_STAFF_ID))
+    success = execute_write_query(sql, (donation_id, current_staff_id))
     
     if success:
         return jsonify({"message": "Donation request removed"}), 200
     return jsonify({"error": "Unauthorized or donation already processed"}), 403
-
-
 
 # --- 6) SEAT APPLICATIONS (Paginated & Details) ---
 
 @staff_bp.route('/seat-applications', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_paginated_applications():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     try:
         search = request.args.get("search")
         limit = min(int(request.args.get('limit', 10)), 50)
         offset = int(request.args.get('offset', 0))
-        status_filter = request.args.get('status', 'Pending') # Default to pending applications
+        status_filter = request.args.get('status', 'Pending') 
     except ValueError:
         return jsonify({"error": "Invalid pagination params"}), 400
-
    
     sql = """
         SELECT 
@@ -583,15 +593,13 @@ def get_paginated_applications():
         JOIN STUDENTS s ON sa.student_id = s.student_id
         WHERE s.hall_id = %s AND sa.status = %s
     """
-    
-    params = [CURRENT_HALL_ID, status_filter]
+    params = [current_hall_id, status_filter]
 
     if search:
         sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
         params.append(f"%{search}%")
         params.append(f"%{search}%")
 
-   
     sql += """ 
         ORDER BY sa.priority_value DESC NULLS LAST, sa.date ASC
         LIMIT %s OFFSET %s;
@@ -601,7 +609,6 @@ def get_paginated_applications():
     
     applications = execute_read_query(sql, tuple(params))
     
-   
     count_sql = """
         SELECT COUNT(*) as total
         FROM SEAT_APPLICATION sa
@@ -609,10 +616,8 @@ def get_paginated_applications():
         WHERE s.hall_id = %s AND sa.status = %s
     """
     if search:
-        
         count_sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
 
-   
     total_count = execute_read_query(count_sql, tuple(count_params))
     total = total_count[0]['total'] if total_count else 0
 
@@ -628,9 +633,9 @@ def get_paginated_applications():
 @staff_bp.route('/seat-applications/<int:app_id>', methods=['GET'])
 @token_required(allowed_roles=['staff'])
 def get_application_details(app_id):
-    """
-    Get all details for a single application, including student info.
-    """
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     sql = """
         SELECT 
             sa.application_id, 
@@ -646,7 +651,7 @@ def get_application_details(app_id):
         JOIN STUDENTS s ON sa.student_id = s.student_id
         WHERE sa.application_id = %s AND s.hall_id = %s;
     """
-    app_details = execute_read_query(sql, (app_id, CURRENT_HALL_ID))
+    app_details = execute_read_query(sql, (app_id, current_hall_id))
     
     if not app_details:
         return jsonify({"error": "Application not found or unauthorized access"}), 404
@@ -656,23 +661,22 @@ def get_application_details(app_id):
 @staff_bp.route('/seat-applications/<int:app_id>/priority', methods=['PUT'])
 @token_required(allowed_roles=['staff'])
 def update_application_priority(app_id):
-    """
-    Update the priority value of a specific seat application.
-    """
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     data = request.get_json()
     new_priority = data.get('priority_value')
     
     if new_priority is None:
         return jsonify({"error": "Missing priority_value in request body"}), 400
         
-    # Security check: Ensure the application belongs to a student in this staff's hall
     check_sql = """
         SELECT sa.application_id 
         FROM SEAT_APPLICATION sa
         JOIN STUDENTS s ON sa.student_id = s.student_id
         WHERE sa.application_id = %s AND s.hall_id = %s;
     """
-    if not execute_read_query(check_sql, (app_id, CURRENT_HALL_ID)):
+    if not execute_read_query(check_sql, (app_id, current_hall_id)):
         return jsonify({"error": "Application not found or unauthorized access"}), 404
 
     update_sql = "UPDATE SEAT_APPLICATION SET priority_value = %s WHERE application_id = %s"
@@ -686,41 +690,30 @@ def update_application_priority(app_id):
         
     return jsonify({"error": "Failed to update priority"}), 500
 
-
-
 # --- 8) STUDENT LIST & SEARCH ---
 
 @staff_bp.route('/add-students', methods=['POST'])
 @token_required(allowed_roles=['staff'])
 def add_student():
-    """
-    Create a new student, generate their user account, and email them the credentials.
-    """
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
     data = request.get_json()
     student_id = data.get('student_id')
     email_address = data.get('email_address')
 
-    # 1. Basic Validation
     if not student_id or not email_address:
         return jsonify({"error": "Missing student_id or email_address"}), 400
 
-    # Validate student_id is exactly 7 digits using Regex
     if not re.fullmatch(r'^\d{7}$', str(student_id)):
         return jsonify({"error": "Student ID must be exactly 7 digits."}), 400
 
-    # 2. Prepare Data
     user_id = f"{student_id}@buet.ac.bd"
     
-    # Generate a secure 10-character random password
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     raw_password = ''.join(secrets.choice(alphabet) for _ in range(10))
-    
-    # Hash the password before saving to DB (Security Best Practice)
     hashed_password = generate_password_hash(raw_password)
 
-    # 3. Database Insertion (Manual Transaction Simulation)
-    
-    # First, insert into USERS
     user_sql = """
         INSERT INTO USERS (user_id, email_address, password)
         VALUES (%s, %s, %s)
@@ -730,22 +723,18 @@ def add_student():
     if not user_success:
         return jsonify({"error": "Failed to create user. ID or Email might already exist."}), 409
 
-    # Second, insert into STUDENTS (Default status: 'ATTACHED' per your ENUM schema)
     student_sql = """
         INSERT INTO STUDENTS (student_id, hall_id, user_id, status)
         VALUES (%s, %s, %s, 'ATTACHED')
     """
-    student_success = execute_write_query(student_sql, (student_id, CURRENT_HALL_ID, user_id))
+    student_success = execute_write_query(student_sql, (student_id, current_hall_id, user_id))
 
     if not student_success:
-        # Rollback: If student insert fails, delete the user we just created so we don't have orphaned data
         execute_write_query("DELETE FROM USERS WHERE user_id = %s", (user_id,))
         return jsonify({"error": "Failed to add student to the hall."}), 500
 
-    # 4. Send the Email
     email_sent = send_welcome_email(email_address, user_id, raw_password)
 
-    # Prepare response
     message = "Student added successfully."
     if not email_sent:
         message += " Warning: Automated email failed to send. Please distribute credentials manually."

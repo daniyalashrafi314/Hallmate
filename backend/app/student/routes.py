@@ -3,19 +3,18 @@ from app.db import execute_read_query, execute_write_query
 from datetime import datetime
 import random, io
 from app.auth.middleware import token_required
+
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
-
-# In a real app, this comes from the login session.
-CURRENT_STUDENT_ID = '2305108'
 
 # --- 1) STUDENT HOME ---
 
 @student_bp.route('/dashboard', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_student_dashboard():
+    current_student_id = request.current_user_id
+
     # 1. Profile & Allocation Info
-    # Uses STUDENTS, HALLS, and ALLOCATIONS tables [cite: 84, 86, 96]
     profile_sql = """
         SELECT s.status, s.name, h.name as hall_name, h.provost, a.room_id, a.seat_number
         FROM STUDENTS s
@@ -23,12 +22,11 @@ def get_student_dashboard():
         LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
         WHERE s.student_id = %s
     """
-    profile_data = execute_read_query(profile_sql, (CURRENT_STUDENT_ID,))
+    profile_data = execute_read_query(profile_sql, (current_student_id,))
     if not profile_data:
         return jsonify({"error": "Student not found"}), 404
 
     # 2. Top Due Payment 
-    # Uses PAYMENTS and FEES tables, sorting by due_time [cite: 97, 98]
     payment_sql = """
         SELECT p.payment_type as title, p.amount, p.due_time, p.status 
         FROM PAYMENTS p
@@ -36,20 +34,18 @@ def get_student_dashboard():
         WHERE f.student_id = %s AND p.status IN ('Due', 'Overdue')
         ORDER BY p.due_time ASC LIMIT 1
     """
-    payment_data = execute_read_query(payment_sql, (CURRENT_STUDENT_ID,))
+    payment_data = execute_read_query(payment_sql, (current_student_id,))
 
     # 3. Top Expected Visitor (Entry time in the future)
-    # Uses VISITORS table [cite: 88, 89]
     visitor_sql = """
         SELECT name, entry_time 
         FROM VISITORS 
         WHERE student_id = %s AND entry_time > CURRENT_TIMESTAMP 
         ORDER BY entry_time ASC LIMIT 1
     """
-    visitor_data = execute_read_query(visitor_sql, (CURRENT_STUDENT_ID,))
+    visitor_data = execute_read_query(visitor_sql, (current_student_id,))
 
     # 4. Top Notice 
-    # Uses NOTICE and STUDENT_NOTICE_STATES tables [cite: 103, 104]
     notice_sql = """
         SELECT n.title, n.created_at, COALESCE(sns.is_read, FALSE) as is_read
         FROM NOTICE n
@@ -57,10 +53,9 @@ def get_student_dashboard():
         WHERE sns.is_hidden IS NOT TRUE
         ORDER BY n.created_at DESC LIMIT 1
     """
-    notice_data = execute_read_query(notice_sql, (CURRENT_STUDENT_ID,))
+    notice_data = execute_read_query(notice_sql, (current_student_id,))
 
     # 5. Top Approved Donation
-    # Uses DONATIONS table [cite: 99]
     donation_sql = """
         SELECT description, start_date 
         FROM DONATIONS 
@@ -70,14 +65,13 @@ def get_student_dashboard():
     donation_data = execute_read_query(donation_sql)
 
     # 6. Top Complaint
-    # Uses COMPLAINTS table [cite: 90, 91]
     complaint_sql = """
         SELECT complaint_type as type, status, date 
         FROM COMPLAINTS 
         WHERE student_id = %s 
         ORDER BY date DESC LIMIT 1
     """
-    complaint_data = execute_read_query(complaint_sql, (CURRENT_STUDENT_ID,))
+    complaint_data = execute_read_query(complaint_sql, (current_student_id,))
 
     return jsonify({
         "profile": profile_data[0],
@@ -93,7 +87,7 @@ def get_student_dashboard():
 @student_bp.route('/payments', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_payments():
-    # Join PAYMENTS and FEES, and use a CASE statement to custom sort the statuses
+    current_student_id = request.current_user_id
     sql = """
         SELECT 
             p.payment_id as id, 
@@ -114,34 +108,30 @@ def get_payments():
             END,
             p.due_time ASC;
     """
-    payments = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    payments = execute_read_query(sql, (current_student_id,))
     return jsonify(payments if payments else []), 200
 
 @student_bp.route('/payments/<int:payment_id>/pay', methods=['PUT'])
 @token_required(allowed_roles=['student'])
 def process_payment(payment_id):
-    # Verify the fee actually belongs to the student before marking it as paid
+    current_student_id = request.current_user_id
     sql = """
         UPDATE PAYMENTS 
         SET status = 'Paid', paid_at = CURRENT_TIMESTAMP
         WHERE payment_id = %s 
           AND payment_id IN (SELECT payment_id FROM FEES WHERE student_id = %s)
     """
-    success = execute_write_query(sql, (payment_id, CURRENT_STUDENT_ID))
+    success = execute_write_query(sql, (payment_id, current_student_id))
     
     if success:
         return jsonify({"message": "Payment successful"}), 200
     return jsonify({"error": "Payment failed or unauthorized"}), 400
-
-
 
 # --- 3) DONATIONS ---
 
 @student_bp.route('/donations', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def list_donations():
-    # This query joins DONATIONS -> ASKS_FOR -> STUDENTS (and STAFFS)
-    # COALESCE picks the first non-null value, perfectly handling the Student vs Staff logic
     sql = """
         SELECT 
             d.donation_id as id,
@@ -168,11 +158,11 @@ def list_donations():
 @student_bp.route('/donations', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def create_donation():
+    current_student_id = request.current_user_id
     data = request.get_json()
     desc = data.get('description')
     end_date = data.get('endDate')
     
-    # This single query inserts the donation AND links it to the student instantly
     sql = """
         WITH new_donation AS (
             INSERT INTO DONATIONS (description, end_date) 
@@ -182,8 +172,7 @@ def create_donation():
         INSERT INTO ASKS_FOR (donation_id, student_id)
         SELECT donation_id, %s FROM new_donation;
     """
-    
-    success = execute_write_query(sql, (desc, end_date, CURRENT_STUDENT_ID))
+    success = execute_write_query(sql, (desc, end_date, current_student_id))
     
     if success:
         return jsonify({"message": "Donation request submitted"}), 201
@@ -192,7 +181,7 @@ def create_donation():
 @student_bp.route('/donations/<int:donation_id>', methods=['DELETE'])
 @token_required(allowed_roles=['student'])
 def withdraw_donation(donation_id):
-    # Ensure a student can only delete their OWN pending donation
+    current_student_id = request.current_user_id
     sql = """
         DELETE FROM DONATIONS 
         WHERE donation_id = %s 
@@ -201,7 +190,7 @@ def withdraw_donation(donation_id):
             SELECT donation_id FROM ASKS_FOR WHERE student_id = %s
         )
     """
-    success = execute_write_query(sql, (donation_id, CURRENT_STUDENT_ID))
+    success = execute_write_query(sql, (donation_id, current_student_id))
     if success:
         return jsonify({"message": "Donation request withdrawn"}), 200
     return jsonify({"error": "Cannot delete this donation"}), 403
@@ -209,13 +198,13 @@ def withdraw_donation(donation_id):
 @student_bp.route('/donations/<int:donation_id>/pledge', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def pledge_donation(donation_id):
+    current_student_id = request.current_user_id
     data = request.get_json()
-    amount = data.get('pledgeAmount') # Matches frontend payload
+    amount = data.get('pledgeAmount')
     
     if not amount or float(amount) <= 0:
          return jsonify({"error": "Invalid amount"}), 400
 
-    # Step 1: Create a Payment obligation (Status: Due)
     sql_pay = """
         INSERT INTO PAYMENTS (payment_type, amount, due_time, status) 
         VALUES ('Donation', %s, CURRENT_TIMESTAMP, 'Due') 
@@ -225,27 +214,22 @@ def pledge_donation(donation_id):
     
     if res:
         new_pay_id = res[0]['payment_id']
-        
-        # Step 2: Link Payment to the specific Donation (GENERATES)
         sql_gen = "INSERT INTO GENERATES (payment_id, donation_id) VALUES (%s, %s)"
         execute_write_query(sql_gen, (new_pay_id, donation_id))
         
-        # Step 3: Link Payment to the Student who pledged (FEES)
         sql_fee = "INSERT INTO FEES (payment_id, student_id) VALUES (%s, %s)"
-        execute_write_query(sql_fee, (new_pay_id, CURRENT_STUDENT_ID))
+        execute_write_query(sql_fee, (new_pay_id, current_student_id))
         
         return jsonify({"message": "Pledge recorded as a due payment."}), 201
         
     return jsonify({"error": "Pledge failed"}), 500
-
-
 
 # --- 4) NOTICES ---
 
 @student_bp.route('/notices', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_notices():
-    
+    current_student_id = request.current_user_id
     sql = """
         SELECT 
             n.notice_id as id, 
@@ -262,32 +246,33 @@ def get_notices():
         WHERE sns.is_hidden IS NOT TRUE
         ORDER BY n.created_at DESC;
     """
-    notices = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    notices = execute_read_query(sql, (current_student_id,))
     return jsonify(notices if notices else []), 200
 
 @student_bp.route('/notices/<int:notice_id>/read', methods=['PUT'])
 @token_required(allowed_roles=['student'])
 def mark_notice_read(notice_id):
-    # UPSERT: Insert the read state. If a row already exists, update it.
+    current_student_id = request.current_user_id
     sql = """
         INSERT INTO STUDENT_NOTICE_STATES (student_id, notice_id, is_read)
         VALUES (%s, %s, TRUE)
         ON CONFLICT (student_id, notice_id)
         DO UPDATE SET is_read = TRUE;
     """
-    execute_write_query(sql, (CURRENT_STUDENT_ID, notice_id))
+    execute_write_query(sql, (current_student_id, notice_id))
     return jsonify({"message": "Marked as read"}), 200
 
 @student_bp.route('/notices/<int:notice_id>/hide', methods=['PUT'])
 @token_required(allowed_roles=['student'])
 def hide_notice(notice_id):
+    current_student_id = request.current_user_id
     sql = """
         INSERT INTO STUDENT_NOTICE_STATES (student_id, notice_id, is_hidden)
         VALUES (%s, %s, TRUE)
         ON CONFLICT (student_id, notice_id)
         DO UPDATE SET is_hidden = TRUE;
     """
-    execute_write_query(sql, (CURRENT_STUDENT_ID, notice_id))
+    execute_write_query(sql, (current_student_id, notice_id))
     return jsonify({"message": "Notice hidden"}), 200
 
 @student_bp.route('/notices/<int:notice_id>/pdf', methods=['GET'])
@@ -299,7 +284,6 @@ def download_notice_pdf(notice_id):
     if result and result[0]['pdf_file']:
         pdf_data = result[0]['pdf_file']
         title = result[0]['title'].replace(' ', '_')
-        # Send the raw byte data back as a downloadable PDF file
         return send_file(
             io.BytesIO(pdf_data),
             download_name=f"{title}.pdf",
@@ -308,12 +292,12 @@ def download_notice_pdf(notice_id):
         )
     return jsonify({"error": "PDF not found"}), 404
 
-
-
 # --- 5) VISITORS ---
+
 @student_bp.route('/visitors', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_visitors():
+    current_student_id = request.current_user_id
     sql = """
         SELECT visitor_id as id, name, phone_number as phone, relationship, 
                TO_CHAR(entry_time, 'YYYY-MM-DD HH12:MI AM') as entry_time,
@@ -323,12 +307,13 @@ def get_visitors():
         WHERE student_id = %s AND hidden_by_student = FALSE
         ORDER BY raw_entry DESC
     """
-    visitors = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    visitors = execute_read_query(sql, (current_student_id,))
     return jsonify(visitors if visitors else []), 200
 
 @student_bp.route('/visitors', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def add_visitor():
+    current_student_id = request.current_user_id
     data = request.get_json()
     
     required_fields = ['name', 'phone', 'relationship', 'entry_time', 'exit_time']
@@ -339,18 +324,14 @@ def add_visitor():
     if data['entry_time'] >= data['exit_time']:
         return jsonify({"error": "Entry time must be before exit time"}), 400
     
-    # 1. Generate the visitor_id (Format: YYYYMMDD-XXX)
     date_str = datetime.now().strftime('%Y%m%d')
     random_suffix = str(random.randint(100, 999))
     visitor_id = f"{date_str}-{random_suffix}"
     
-    # 2. Clean up empty strings from the frontend 
-    # (If the user leaves 'phone' or 'exit_time' blank, make sure Python sends NULL to the DB)
     phone = data.get('phone') if data.get('phone') else None
     exit_time = data.get('exit_time') if data.get('exit_time') else None
     entry_time = data.get('entry_time') if data.get('entry_time') else None
     
-    # 3. Insert into the database
     sql = """
         INSERT INTO VISITORS (visitor_id, student_id, name, phone_number, relationship, entry_time, exit_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -358,7 +339,7 @@ def add_visitor():
     
     success = execute_write_query(sql, (
         visitor_id, 
-        CURRENT_STUDENT_ID, 
+        current_student_id, 
         data.get('name'), 
         phone, 
         data.get('relationship'), 
@@ -374,11 +355,12 @@ def add_visitor():
 @student_bp.route('/visitors/<visitor_id>/cancel', methods=['DELETE'])
 @token_required(allowed_roles=['student'])
 def cancel_visitor(visitor_id):
+    current_student_id = request.current_user_id
     sql = """
         DELETE FROM VISITORS 
         WHERE visitor_id = %s AND student_id = %s
     """
-    success = execute_write_query(sql, (visitor_id, CURRENT_STUDENT_ID))
+    success = execute_write_query(sql, (visitor_id, current_student_id))
     
     if success:
         return jsonify({"message": "Visitor cancelled successfully"}), 200
@@ -387,26 +369,25 @@ def cancel_visitor(visitor_id):
 @student_bp.route('/visitors/<visitor_id>/hide', methods=['PUT'])
 @token_required(allowed_roles=['student'])
 def hide_visitor(visitor_id):
-    # Soft delete a specific visitor
+    current_student_id = request.current_user_id
     sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE visitor_id = %s AND student_id = %s"
-    execute_write_query(sql, (visitor_id, CURRENT_STUDENT_ID))
+    execute_write_query(sql, (visitor_id, current_student_id))
     return jsonify({"message": "Visitor hidden from log"}), 200
 
 @student_bp.route('/visitors/clear', methods=['PUT'])
 @token_required(allowed_roles=['student'])
 def clear_visitors():
-    # Soft delete ALL visitors for this student
+    current_student_id = request.current_user_id
     sql = "UPDATE VISITORS SET hidden_by_student = TRUE WHERE student_id = %s"
-    execute_write_query(sql, (CURRENT_STUDENT_ID,))
+    execute_write_query(sql, (current_student_id,))
     return jsonify({"message": "Visitor log cleared"}), 200
-
-
 
 # --- 6) COMPLAINTS ---
 
-@student_bp.route('/complaints', methods=['GET'])#
+@student_bp.route('/complaints', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_complaints():
+    current_student_id = request.current_user_id
     sql = """
         SELECT complaint_id as id, complaint_type as type, description, 
                status, TO_CHAR(date, 'YYYY-MM-DD') as date, is_anonymous
@@ -414,12 +395,13 @@ def get_complaints():
         WHERE student_id = %s 
         ORDER BY complaint_id DESC
     """
-    complaints = execute_read_query(sql, (CURRENT_STUDENT_ID,))
+    complaints = execute_read_query(sql, (current_student_id,))
     return jsonify(complaints if complaints else []), 200
 
 @student_bp.route('/complaints', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def add_complaint():
+    current_student_id = request.current_user_id
     data = request.get_json()
     c_type = data.get('type')
     desc = data.get('description')
@@ -432,7 +414,7 @@ def add_complaint():
         INSERT INTO COMPLAINTS (student_id, complaint_type, description, is_anonymous) 
         VALUES (%s, %s, %s, %s)
     """
-    success = execute_write_query(sql, (CURRENT_STUDENT_ID, c_type, desc, is_anon))
+    success = execute_write_query(sql, (current_student_id, c_type, desc, is_anon))
     
     if success:
         return jsonify({"message": "Complaint filed successfully"}), 201
@@ -441,19 +423,16 @@ def add_complaint():
 @student_bp.route('/complaints/<int:complaint_id>', methods=['DELETE'])
 @token_required(allowed_roles=['student'])
 def remove_complaint(complaint_id):
-    # Only allow deletion if the complaint belongs to the student AND is still 'Pending'
+    current_student_id = request.current_user_id
     sql = "DELETE FROM COMPLAINTS WHERE complaint_id = %s AND student_id = %s AND status = 'Pending'"
-    success = execute_write_query(sql, (complaint_id, CURRENT_STUDENT_ID))
+    success = execute_write_query(sql, (complaint_id, current_student_id))
     
     if success:
         return jsonify({"message": "Complaint removed"}), 200
     return jsonify({"error": "Cannot delete this complaint (it may already be processed)"}), 400
 
-
-
 # --- 7) SEAT APPLICATION ---
 
-# --- HELPER FUNCTIONS & CONSTANTS ---
 DEPARTMENT_CODES = {
     '05': 'Computer Science & Engineering (CSE)',
     '42': 'Electrical & Electronic Engineering (EEE)',
@@ -483,29 +462,27 @@ def derive_department(student_id):
 @student_bp.route('/seat-application/status', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_application_status():
-    # 1. Fetch current application status
+    current_student_id = request.current_user_id
+
     app_sql = "SELECT status, description FROM SEAT_APPLICATION WHERE student_id = %s ORDER BY date DESC LIMIT 1"
-    application = execute_read_query(app_sql, (CURRENT_STUDENT_ID,))
+    application = execute_read_query(app_sql, (current_student_id,))
     
-    # 2. Fetch student profile details
     stu_sql = "SELECT name, phone_number FROM STUDENTS WHERE student_id = %s"
-    student = execute_read_query(stu_sql, (CURRENT_STUDENT_ID,))
+    student = execute_read_query(stu_sql, (current_student_id,))
     
     if not student:
         return jsonify({"error": "Student not found"}), 404
         
     stu_data = student[0]
     
-    # Bundle the profile with the derived data
     profile = {
-        "student_id": CURRENT_STUDENT_ID,
+        "student_id": current_student_id,
         "name": stu_data['name'],
         "phone": stu_data['phone_number'] or "",
-        "batch_year": derive_batch_year(CURRENT_STUDENT_ID),
-        "department": derive_department(CURRENT_STUDENT_ID)
+        "batch_year": derive_batch_year(current_student_id),
+        "department": derive_department(current_student_id)
     }
 
-    # Determine status (None, Pending, Approved, Refused)
     app_status = application[0]['status'] if application else 'None'
     description = application[0]['description'] if application else ''
     
@@ -518,23 +495,22 @@ def get_application_status():
 @student_bp.route('/seat-application', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def submit_application():
+    current_student_id = request.current_user_id
     data = request.get_json()
     reasoning = data.get('reasoning')
     phone = data.get('phone')
-    # dept = data.get('department') # Note: No column in DB to save this currently
     
     if not reasoning:
         return jsonify({"error": "Reasoning is required"}), 400
 
-    # Optional: Update the student's phone number if they changed it in the wizard
     if phone:
-        execute_write_query("UPDATE STUDENTS SET phone_number = %s WHERE student_id = %s", (phone, CURRENT_STUDENT_ID))
+        execute_write_query("UPDATE STUDENTS SET phone_number = %s WHERE student_id = %s", (phone, current_student_id))
         
     sql = """
         INSERT INTO SEAT_APPLICATION (student_id, description, status) 
         VALUES (%s, %s, 'Pending')
     """
-    success = execute_write_query(sql, (CURRENT_STUDENT_ID, reasoning))
+    success = execute_write_query(sql, (current_student_id, reasoning))
     
     if success:
         return jsonify({"message": "Application submitted"}), 201
@@ -543,9 +519,9 @@ def submit_application():
 @student_bp.route('/seat-application/cancel', methods=['DELETE'])
 @token_required(allowed_roles=['student'])
 def cancel_application():
-    # Deletes the application (Used for both Canceling a pending one, or acknowledging a refused one)
+    current_student_id = request.current_user_id
     sql = "DELETE FROM SEAT_APPLICATION WHERE student_id = %s AND status IN ('Pending', 'Refused')"
-    success = execute_write_query(sql, (CURRENT_STUDENT_ID,))
+    success = execute_write_query(sql, (current_student_id,))
     
     if success:
         return jsonify({"message": "Application cleared"}), 200
