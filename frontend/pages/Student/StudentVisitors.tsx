@@ -102,7 +102,7 @@ const StudentVisitors: React.FC = () => {
 
     try {
       const token = localStorage.getItem('hallmate_token');
-      const response = await fetch(`${API_BASE}/{visitorId}/cancel`, {
+      const response = await fetch(`${API_BASE}/${visitorId}/cancel`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

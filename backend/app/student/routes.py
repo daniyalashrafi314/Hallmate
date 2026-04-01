@@ -433,30 +433,9 @@ def remove_complaint(complaint_id):
 
 # --- 7) SEAT APPLICATION ---
 
-DEPARTMENT_CODES = {
-    '05': 'Computer Science & Engineering (CSE)',
-    '42': 'Electrical & Electronic Engineering (EEE)',
-    '01': 'Architecture (ARC)',
-    '02': 'Chemical Engineering (CHE)',
-    '03': 'Civil Engineering (CIV)',
-    '04': 'Mechanical Engineering (MEC)',
-    '06': 'Materials & Metallurgical Eng. (MME)',
-    '07': 'Naval Arch. & Marine Eng. (NAME)',
-    '08': 'Industrial & Production Eng. (IPE)',
-    '09': 'Water Resources Engineering (WRE)',
-    '10': 'Urban & Regional Planning (URP)',
-    '11': 'Biomedical Engineering (BME)'
-}
-
 def derive_batch_year(student_id):
     if student_id and len(student_id) >= 2 and student_id[:2].isdigit():
         return f"20{student_id[:2]}"
-    return "Unknown"
-
-def derive_department(student_id):
-    if student_id and len(student_id) >= 4:
-        code = student_id[2:4]
-        return DEPARTMENT_CODES.get(code, f"Unknown Code ({code})")
     return "Unknown"
 
 @student_bp.route('/seat-application/status', methods=['GET'])
@@ -467,7 +446,12 @@ def get_application_status():
     app_sql = "SELECT status, description FROM SEAT_APPLICATION WHERE student_id = %s ORDER BY date DESC LIMIT 1"
     application = execute_read_query(app_sql, (current_student_id,))
     
-    stu_sql = "SELECT name, phone_number FROM STUDENTS WHERE student_id = %s"
+    stu_sql = """
+                SELECT name, phone_number, get_department_name(student_id) as department 
+                FROM STUDENTS 
+                WHERE student_id = %s
+            """
+    
     student = execute_read_query(stu_sql, (current_student_id,))
     
     if not student:
@@ -480,7 +464,7 @@ def get_application_status():
         "name": stu_data['name'],
         "phone": stu_data['phone_number'] or "",
         "batch_year": derive_batch_year(current_student_id),
-        "department": derive_department(current_student_id)
+        "department": stu_data['department']
     }
 
     app_status = application[0]['status'] if application else 'None'

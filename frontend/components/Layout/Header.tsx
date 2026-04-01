@@ -11,14 +11,6 @@ const Header: React.FC = () => {
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 sticky top-0 z-40">
       <div className="flex items-center gap-4 text-gray-400">
         <Menu className="md:hidden cursor-pointer text-gray-600" />
-        <div className="hidden md:flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
-          <Search className="w-4 h-4" />
-          <input 
-            type="text" 
-            placeholder="Search records..." 
-            className="bg-transparent border-none outline-none text-sm w-48 text-gray-700 placeholder-gray-400"
-          />
-        </div>
       </div>
 
       <div className="flex items-center gap-6">

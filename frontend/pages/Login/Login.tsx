@@ -63,7 +63,7 @@ const Login: React.FC = () => {
             <ShieldCheck className="w-8 h-8" />
           </div>
           <h1 className="text-3xl font-bold mb-1">Welcome Back</h1>
-          <p className="text-blue-100 text-sm">Sign in to the Hall Management System</p>
+          <p className="text-blue-100 text-sm">Sign in to HALLMATE</p>
         </div>
 
         {/* Form Section */}
@@ -123,12 +123,6 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-8 text-center text-sm text-gray-500">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 font-bold hover:underline">
-              Register here
-            </Link>
-          </div>
         </div>
       </div>
     </div>

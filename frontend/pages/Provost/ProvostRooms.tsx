@@ -126,7 +126,7 @@ const ProvostRooms: React.FC = () => {
       {/* Header and Filters */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Seat Allocation Matrix</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Seat Allocation</h2>
           <p className="text-gray-500 mt-1">Visually manage room capacities and assignments.</p>
         </div>
         

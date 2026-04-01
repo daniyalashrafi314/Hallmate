@@ -118,14 +118,11 @@ def allocate_seat():
     seat_number = data.get('seat_number')
     
     # 1. Create Allocation
+    # The PostgreSQL Trigger will automatically update the STUDENTS and SEATS tables!
     execute_write_query("""
         INSERT INTO ALLOCATIONS (student_id, room_id, seat_number, start_date) 
         VALUES (%s, %s, %s, CURRENT_DATE)
     """, (student_id, room_id, seat_number))
-    
-    # 2. Update Student Status and Seat Status
-    execute_write_query("UPDATE STUDENTS SET status = 'RESIDENT' WHERE student_id = %s", (student_id,))
-    execute_write_query("UPDATE SEATS SET status = 'occupied' WHERE room_id = %s AND seat_number = %s", (room_id, seat_number))
 
     return jsonify({"message": "Student successfully allocated"}), 200
 
@@ -142,14 +139,11 @@ def deallocate_seat():
     student_id = data.get('student_id')
     
     # 1. End the allocation
+    # The PostgreSQL Trigger will automatically revert the STUDENTS and SEATS statuses!
     execute_write_query("""
         UPDATE ALLOCATIONS SET end_date = CURRENT_DATE 
         WHERE student_id = %s AND room_id = %s AND seat_number = %s AND end_date IS NULL
     """, (student_id, room_id, seat_number))
-    
-    # 2. Revert Statuses
-    execute_write_query("UPDATE STUDENTS SET status = 'ATTACHED' WHERE student_id = %s", (student_id,))
-    execute_write_query("UPDATE SEATS SET status = 'vacant' WHERE room_id = %s AND seat_number = %s", (room_id, seat_number))
     
     return jsonify({"message": "Student successfully deallocated"}), 200
 
