@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../../App';
 import { User, Mail, Phone, Building2, Badge, AlertCircle, Users, X } from 'lucide-react';
 
+
 interface StaffProfileData {
   staff_id: string;
   staff_name: string;
@@ -20,6 +21,7 @@ const StaffProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   
   // Edit Mode State
   const [editMode, setEditMode] = useState(false);
@@ -68,6 +70,8 @@ const StaffProfile: React.FC = () => {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+
 
   // Edit Profile Handlers
   const handleEditClick = () => {
@@ -224,6 +228,40 @@ const StaffProfile: React.FC = () => {
     }
   };
 
+  const fetchSecurePhoto = async () => {
+    if (profile?.has_photo) {
+      try {
+        const token = localStorage.getItem('hallmate_token');
+        const response = await fetch('http://localhost:5000/staff/profile/photo', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const imageBlob = await response.blob();
+          const objectUrl = URL.createObjectURL(imageBlob);
+          setPhotoUrl(objectUrl);
+        }
+      } catch (err) {
+        console.error("Error fetching profile photo:", err);
+      }
+    }
+  };
+
+
+  useEffect(() => {
+  
+
+  fetchSecurePhoto();
+
+  // Cleanup the object URL when the component unmounts to prevent memory leaks
+  return () => {
+    if (photoUrl) {
+      URL.revokeObjectURL(photoUrl);
+    }
+  };
+}, [profile?.has_photo]); // Re-run if the profile status changes
+
+
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -278,13 +316,21 @@ const StaffProfile: React.FC = () => {
         {/* Header Section with Avatar */}
         <div className={`${theme.primary} text-white p-8 flex items-center gap-6`}>
           <div className="relative w-20 h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-            {photoPreview ? (
+            {/*{photoPreview ? (
               <img src={photoPreview} alt="Photo preview" className="w-full h-full object-cover" />
             ) : profile.has_photo ? (
               <img src="http://localhost:5000/staff/profile/photo" alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <User className="w-12 h-12" />
+            )}*/}
+            {photoPreview ? (
+              <img src={photoPreview} alt="Photo preview" className="w-full h-full object-cover" />
+            ) : photoUrl ? (
+              <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-12 h-12" />
             )}
+            
             {editMode && (
               <label className="absolute inset-0 cursor-pointer bg-black/40 flex items-center justify-center hover:bg-black/60 transition-colors">
                 <input
