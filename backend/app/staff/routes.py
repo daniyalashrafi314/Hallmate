@@ -708,32 +708,28 @@ def add_student():
     if not re.fullmatch(r'^\d{7}$', str(student_id)):
         return jsonify({"error": "Student ID must be exactly 7 digits."}), 400
 
-    user_id = f"{student_id}@buet.ac.bd"
-    
+    # generate password
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     raw_password = ''.join(secrets.choice(alphabet) for _ in range(10))
     hashed_password = generate_password_hash(raw_password)
 
-    user_sql = """
-        INSERT INTO USERS (user_id, email_address, password)
-        VALUES (%s, %s, %s)
-    """
-    user_success = execute_write_query(user_sql, (user_id, email_address, hashed_password))
-    
-    if not user_success:
-        return jsonify({"error": "Failed to create user. ID or Email might already exist."}), 409
+    try:
+        proc_sql = """
+            CALL register_new_student(%s, %s, %s, %s)
+        """
+        success = execute_write_query(
+            proc_sql,
+            (student_id, email_address.replace('@buet.ac.bd', ''), hashed_password, current_hall_id)
+        )
+        
 
-    student_sql = """
-        INSERT INTO STUDENTS (student_id, hall_id, user_id, status)
-        VALUES (%s, %s, %s, 'ATTACHED')
-    """
-    student_success = execute_write_query(student_sql, (student_id, current_hall_id, user_id))
+        if not success:
+            return jsonify({"error": "Failed to add student."}), 500
 
-    if not student_success:
-        execute_write_query("DELETE FROM USERS WHERE user_id = %s", (user_id,))
-        return jsonify({"error": "Failed to add student to the hall."}), 500
+    except Exception:
+        return jsonify({"error": "Student may already exist."}), 409
 
-    email_sent = send_welcome_email(email_address, user_id, raw_password)
+    email_sent = send_welcome_email(email_address, student_id, raw_password)
 
     message = "Student added successfully."
     if not email_sent:
@@ -742,5 +738,5 @@ def add_student():
     return jsonify({
         "message": message,
         "student_id": student_id,
-        "user_id": user_id
+        "user_id": student_id
     }), 201

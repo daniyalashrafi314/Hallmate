@@ -247,10 +247,10 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     INSERT INTO USERS (user_id, email_address, password)
-    VALUES (p_student_id, p_email || '@buet.ac.bd', p_password);
+    VALUES (p_student_id, p_email, p_password);
 
     INSERT INTO STUDENTS (student_id, hall_id, user_id, status)
-    VALUES (p_student_id, p_hall_id, p_student_id || '@buet.ac.bd', 'ATTACHED');
+    VALUES (p_student_id, p_hall_id, p_student_id , 'ATTACHED');
 
 END;
 $$;
