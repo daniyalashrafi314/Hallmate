@@ -3,13 +3,52 @@ from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
 
 admin_bp = Blueprint('admin', __name__)
+# --- HELPER FUNCTION ---
+def get_current_hall_id(staff_id):
+    """Dynamically fetches the hall_id for the currently logged-in staff member."""
+    sql = "SELECT hall_id FROM STAFFS WHERE staff_id = %s"
+    result = execute_read_query(sql, (staff_id,))
+    return result[0]['hall_id'] if result else None
 
-CURRENT_HALL_ID = 1
+
+@admin_bp.route('/dashboard', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_dashboard():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    sql = """
+        SELECT
+            s.staff_id,
+            s.name       AS name,
+            s.phone_number,
+            u.email_address,
+            h.name       AS hall_name,
+            h.hall_id,
+            (s.photo IS NOT NULL) AS has_photo
+        FROM STAFFS s
+        JOIN USERS u  ON s.user_id  = u.user_id
+        JOIN HALLS h  ON s.hall_id  = h.hall_id
+        WHERE s.staff_id = %s
+    """
+    result = execute_read_query(sql, (current_admin_id,))
+    if not result:
+        return jsonify({"error": "Staff not found"}), 404
+
+    return jsonify(result[0]), 200
+
+
+
+
+
+
 
 # --- 1) VIEW USERS (Students & Staff) ---
 @admin_bp.route('/students', methods=['GET'])
 @token_required(allowed_roles=['admin'])
 def get_all_students():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     sql = """
         SELECT s.*, h.name as hall_name, u.email_address 
         FROM STUDENTS s
@@ -21,6 +60,8 @@ def get_all_students():
 @admin_bp.route('/staff', methods=['GET'])
 @token_required(allowed_roles=['admin'])
 def get_all_staff():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     sql = """
         SELECT s.*, h.name as hall_name, u.email_address 
         FROM STAFFS s
@@ -36,6 +77,8 @@ def get_all_staff():
 @admin_bp.route('/rooms', methods=['GET'])
 @token_required(allowed_roles=['admin'])
 def get_rooms_and_seats():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     sql = """
         SELECT r.room_id, r.capacity, s.seat_number, a.student_id
         FROM ROOMS r
@@ -46,7 +89,7 @@ def get_rooms_and_seats():
         WHERE r.hall_id = %s
         ORDER BY r.room_id, s.seat_number
     """
-    results = execute_read_query(sql, (CURRENT_HALL_ID,))
+    results = execute_read_query(sql, (current_hall_id,))
     
     rooms_dict = {}
     for row in results:
@@ -64,10 +107,12 @@ def get_rooms_and_seats():
         })
         
     return jsonify(list(rooms_dict.values())), 200
-
+#Need to filter halls
 @admin_bp.route('/approved-students', methods=['GET'])
 @token_required(allowed_roles=['admin'])
 def get_approved_students_needing_seats():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     sql = """
         SELECT s.student_id, s.name, sa.priority_value
         FROM STUDENTS s
@@ -78,12 +123,14 @@ def get_approved_students_needing_seats():
           AND a.room_id IS NULL
         ORDER BY sa.priority_value DESC
     """
-    students = execute_read_query(sql, (CURRENT_HALL_ID,))
+    students = execute_read_query(sql, (current_hall_id,))
     return jsonify(students if students else []), 200
 
 @admin_bp.route('/allocate', methods=['POST', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def allocate_seat():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
         return '', 200
@@ -105,6 +152,8 @@ def allocate_seat():
 @admin_bp.route('/deallocate', methods=['POST', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def deallocate_seat():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
         return '', 200
@@ -129,11 +178,15 @@ def deallocate_seat():
 @admin_bp.route('/donations/pending', methods=['GET'])
 @token_required(allowed_roles=['admin'])
 def get_pending_donations():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     return jsonify(execute_read_query("SELECT * FROM DONATIONS WHERE status = 'Pending'"))
 
 @admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def approve_donation(donation_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
 
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
@@ -151,6 +204,8 @@ def approve_donation(donation_id):
 @admin_bp.route('/seat-approvals', methods=['GET'])
 @token_required(allowed_roles=['admin']) # Adjust to 'provost' if you have a separate role!
 def get_all_seat_applications():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     sql = """
         SELECT 
             sa.application_id, 
@@ -180,6 +235,8 @@ def get_all_seat_applications():
 @admin_bp.route('/seat-approvals/<int:app_id>/status', methods=['PUT', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def update_seat_approval_status(app_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
         return '', 200

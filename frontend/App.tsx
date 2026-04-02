@@ -27,11 +27,13 @@ import StaffDonations from './pages/Staff/StaffDonations';
 import StaffNotices from './pages/Staff/StaffNotices';
 import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
+import StaffDashboard from './pages/Staff/StaffDashboard';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
+import ProvostDashboard from './pages/Provost/ProvostDashboard';
 
 // 1. Update Context to handle actual Authentication state
 interface AppContextType {
@@ -124,7 +126,16 @@ const App: React.FC = () => {
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                         
                         {/* Student Routes */}
-                        <Route path="/dashboard" element={userRole === UserRole.STUDENT ? <StudentHome /> : <StaffVisitors />} />
+                        <Route
+                          path="/dashboard"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentHome />
+                              : userRole === UserRole.STAFF
+                                ? <StaffDashboard />
+                                : <ProvostDashboard />
+                          }
+                        />
                         <Route path="/seat-application" element={<StudentSeatApplication />} />
                         <Route path="/payments" element={<StudentPayments />} />
                         <Route path="/visitors" element={userRole === UserRole.STUDENT ? <StudentVisitors /> : <StaffVisitors />} />

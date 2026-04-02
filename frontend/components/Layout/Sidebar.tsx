@@ -27,6 +27,7 @@ const Sidebar: React.FC = () => {
       { to: '/complaints', label: 'Complaints', icon: FileText}
     ],
     [UserRole.STAFF]: [
+      { to: '/dashboard', label: 'Dashboard', icon: Home },
       { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/visitors', label: 'Visitors', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
@@ -37,6 +38,7 @@ const Sidebar: React.FC = () => {
       { to: '/donations', label: 'Donations', icon: Heart },
     ],
     [UserRole.PROVOST]: [
+      { to: '/dashboard', label: 'Dashboard', icon: Home },
       { to: '/users', label: 'User Management', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Seat Approvals', icon: ShieldCheck },
