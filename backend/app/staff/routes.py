@@ -414,6 +414,326 @@ def get_batches():
     batches = execute_read_query(sql, (current_hall_id,))
     return jsonify(batches)
 
+# ===========================================================
+# --- PAYMENTS: VIEW / SEARCH / FILTER  (sub-page tab 1) ---
+# ===========================================================
+
+VALID_PAYMENT_STATUSES        = {'Due', 'Paid', 'Overdue'}
+VALID_DELETE_REQUEST_STATUSES = {'Pending', 'Refused'}
+
+@staff_bp.route('/payments', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_payments():
+    """
+    Paginated, filterable list of all student fee payments for this hall.
+    Query params:
+      search        – student name or student_id (ILIKE)
+      payment_type  – exact match e.g. 'Dining', 'Seat'
+      status        – 'Due' | 'Paid' | 'Overdue'
+      year          – 4-digit year of due_time
+      month         – 1-12
+      limit / offset
+    """
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    try:
+        limit  = min(int(request.args.get('limit',  10)), 50)
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+    search       = request.args.get('search',       None)
+    payment_type = request.args.get('payment_type', None)
+    status       = request.args.get('status',       None)
+    year         = request.args.get('year',         None)
+    month        = request.args.get('month',        None)
+
+    if status and status not in VALID_PAYMENT_STATUSES:
+        return jsonify({"error": f"Invalid status. Must be one of: {', '.join(VALID_PAYMENT_STATUSES)}"}), 400
+
+    base = """
+        FROM PAYMENTS p
+        JOIN FEES f     ON p.payment_id = f.payment_id
+        JOIN STUDENTS s ON f.student_id = s.student_id
+        LEFT JOIN PAYMENT_DELETE_REQUESTS dr
+               ON p.payment_id = dr.payment_id AND dr.status = 'Pending'
+        WHERE s.hall_id = %s
+    """
+    params = [current_hall_id]
+
+    if payment_type:
+        base += " AND p.payment_type = %s"; params.append(payment_type)
+    if status:
+        base += " AND p.status = %s";       params.append(status)
+    if year:
+        base += " AND EXTRACT(YEAR  FROM p.due_time) = %s"; params.append(year)
+    if month:
+        base += " AND EXTRACT(MONTH FROM p.due_time) = %s"; params.append(month)
+    if search:
+        base += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        params += [f"%{search}%", f"%{search}%"]
+
+    count_params = list(params)
+
+    sql = f"""
+        SELECT
+            p.payment_id,
+            p.payment_type,
+            p.amount,
+            p.status,
+            TO_CHAR(p.due_time, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS due_time,
+            TO_CHAR(p.paid_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS paid_at,
+            f.student_id,
+            s.name AS student_name,
+            (dr.request_id IS NOT NULL) AS delete_pending
+        {base}
+        ORDER BY p.due_time DESC NULLS LAST
+        LIMIT %s OFFSET %s
+    """
+    params += [limit, offset]
+    payments = execute_read_query(sql, tuple(params))
+
+    count_sql = f"SELECT COUNT(*) AS total {base}"
+    total_row = execute_read_query(count_sql, tuple(count_params))
+    total     = total_row[0]['total'] if total_row else 0
+
+    return jsonify({
+        "data": payments,
+        "pagination": {"limit": limit, "offset": offset, "total": total}
+    }), 200
+
+
+@staff_bp.route('/payments/<int:payment_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_payment_detail(payment_id):
+    """Single payment detail — guards against cross-hall access."""
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    sql = """
+        SELECT
+            p.payment_id, p.payment_type, p.amount, p.status,
+            TO_CHAR(p.due_time, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS due_time,
+            TO_CHAR(p.paid_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS paid_at,
+            f.student_id,
+            s.name         AS student_name,
+            s.phone_number AS student_phone,
+            dr.request_id  AS delete_request_id,
+            dr.status      AS delete_request_status
+        FROM PAYMENTS p
+        JOIN FEES f     ON p.payment_id = f.payment_id
+        JOIN STUDENTS s ON f.student_id = s.student_id
+        LEFT JOIN PAYMENT_DELETE_REQUESTS dr ON p.payment_id = dr.payment_id
+        WHERE p.payment_id = %s
+          AND s.hall_id    = %s
+    """
+    result = execute_read_query(sql, (payment_id, current_hall_id))
+    if not result:
+        return jsonify({"error": "Payment not found or unauthorized"}), 404
+    return jsonify(result[0]), 200
+
+
+# ================================================================
+# --- PAYMENTS: SOFT-DELETE FLOW (sub-page tab 2)             ---
+# Staff flags → provost confirms → payment actually deleted     ---
+# ================================================================
+
+@staff_bp.route('/payments/<int:payment_id>/delete-request', methods=['POST'])
+@token_required(allowed_roles=['staff'])
+def request_payment_deletion(payment_id):
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    check_sql = """
+        SELECT p.payment_id, p.status
+        FROM PAYMENTS p
+        JOIN FEES f     ON p.payment_id = f.payment_id
+        JOIN STUDENTS s ON f.student_id = s.student_id
+        WHERE p.payment_id = %s AND s.hall_id = %s
+    """
+    result = execute_read_query(check_sql, (payment_id, current_hall_id))
+    
+    if not result:
+        return jsonify({"error": "Payment not found or unauthorized"}), 404
+
+    # ← ADD THIS CHECK
+    if result[0]['status'] == 'Paid':
+        return jsonify({"error": "Paid payments cannot be deleted"}), 400
+
+    sql = """
+        INSERT INTO PAYMENT_DELETE_REQUESTS (payment_id, requested_by)
+        VALUES (%s, %s)
+        ON CONFLICT (payment_id) DO NOTHING
+        RETURNING request_id
+    """
+    result = execute_write_query(sql, (payment_id, current_staff_id), return_result=True)
+    if not result:
+        return jsonify({"error": "A delete request for this payment already exists"}), 409
+
+    return jsonify({
+        "message": "Delete request submitted. Awaiting provost approval.",
+        "request_id": result[0]['request_id']
+    }), 201
+
+
+@staff_bp.route('/payments/delete-requests', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_delete_requests():
+    """
+    List delete requests.
+    - Clerk/Guard sees only their own requests.
+    - Provost sees ALL requests for the hall.
+    Query params:
+      status  – 'Pending' | 'Refused'  (default: 'Pending')
+      limit / offset
+    """
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    role_row = execute_read_query(
+        "SELECT role FROM STAFFS WHERE staff_id = %s", (current_staff_id,)
+    )
+    role = role_row[0]['role'] if role_row else None
+
+    try:
+        limit  = min(int(request.args.get('limit',  10)), 50)
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+    status_filter = request.args.get('status', 'Pending')
+    if status_filter not in VALID_DELETE_REQUEST_STATUSES:
+        return jsonify({"error": f"Invalid status. Must be one of: {', '.join(VALID_DELETE_REQUEST_STATUSES)}"}), 400
+
+    is_provost = role and role.lower() == 'provost'
+
+    base = """
+        FROM PAYMENT_DELETE_REQUESTS dr
+        JOIN PAYMENTS  p        ON dr.payment_id   = p.payment_id
+        JOIN FEES      f        ON p.payment_id    = f.payment_id
+        JOIN STUDENTS  s        ON f.student_id    = s.student_id
+        JOIN STAFFS    st_req   ON dr.requested_by = st_req.staff_id
+        LEFT JOIN STAFFS st_rev ON dr.reviewed_by  = st_rev.staff_id
+        WHERE s.hall_id = %s
+          AND dr.status = %s
+    """
+    params = [current_hall_id, status_filter]
+
+    if not is_provost:
+        base += " AND dr.requested_by = %s"
+        params.append(current_staff_id)
+
+    count_params = list(params)
+
+    sql = f"""
+        SELECT
+            dr.request_id,
+            dr.payment_id,
+            dr.status        AS request_status,
+            TO_CHAR(dr.requested_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS requested_at,
+            TO_CHAR(dr.reviewed_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS reviewed_at,
+            st_req.name      AS requested_by_name,
+            st_rev.name      AS reviewed_by_name,
+            p.payment_type,
+            p.amount,
+            p.status         AS payment_status,
+            TO_CHAR(p.due_time, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS due_time,
+            f.student_id,
+            s.name           AS student_name
+        {base}
+        ORDER BY dr.requested_at DESC
+        LIMIT %s OFFSET %s
+    """
+    params += [limit, offset]
+    requests = execute_read_query(sql, tuple(params))
+
+    count_sql = f"SELECT COUNT(*) AS total {base}"
+    total_row = execute_read_query(count_sql, tuple(count_params))
+    total     = total_row[0]['total'] if total_row else 0
+
+    return jsonify({
+        "data": requests,
+        "pagination": {"limit": limit, "offset": offset, "total": total}
+    }), 200
+
+
+@staff_bp.route('/payments/delete-requests/<int:request_id>', methods=['DELETE'])
+@token_required(allowed_roles=['staff'])
+def cancel_delete_request(request_id):
+    """Staff cancels their own pending delete request."""
+    current_staff_id = request.current_user_id
+
+    sql = """
+        DELETE FROM PAYMENT_DELETE_REQUESTS
+        WHERE request_id   = %s
+          AND requested_by = %s
+          AND status       = 'Pending'
+        RETURNING request_id
+    """
+    result = execute_write_query(sql, (request_id, current_staff_id), return_result=True)
+    if not result:
+        return jsonify({"error": "Request not found, already reviewed, or unauthorized"}), 403
+
+    return jsonify({"message": "Delete request cancelled"}), 200
+
+
+@staff_bp.route('/payments/delete-requests/<int:request_id>/review', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
+def review_delete_request(request_id):
+    """
+    Provost-only.
+    body: { "action": "Approve" } → hard deletes the payment, request row vanishes via CASCADE
+    body: { "action": "Refuse"  } → request marked Refused, payment stays
+    """
+    current_staff_id = request.current_user_id
+
+    role_row = execute_read_query(
+        "SELECT role FROM STAFFS WHERE staff_id = %s", (current_staff_id,)
+    )
+    if not role_row or role_row[0]['role'].lower() != 'provost':
+        return jsonify({"error": "Only the provost can review delete requests"}), 403
+
+    data   = request.get_json() or {}
+    action = data.get('action')
+
+    if action not in ('Approve', 'Refuse'):
+        return jsonify({"error": "action must be 'Approve' or 'Refuse'"}), 400
+
+    if action == 'Approve':
+        # Fetch the payment_id first, then delete the payment.
+        # CASCADE on PAYMENT_DELETE_REQUESTS handles the request row automatically.
+        fetch_sql = """
+            SELECT payment_id FROM PAYMENT_DELETE_REQUESTS
+            WHERE request_id = %s AND status = 'Pending'
+        """
+        result = execute_read_query(fetch_sql, (request_id,))
+        if not result:
+            return jsonify({"error": "Request not found or already reviewed"}), 404
+
+        execute_write_query(
+            "DELETE FROM PAYMENTS WHERE payment_id = %s",
+            (result[0]['payment_id'],)
+        )
+        return jsonify({"message": "Payment deleted successfully"}), 200
+
+    # action == 'Refuse'
+    refuse_sql = """
+        UPDATE PAYMENT_DELETE_REQUESTS
+        SET status      = 'Refused',
+            reviewed_by = %s,
+            reviewed_at = CURRENT_TIMESTAMP
+        WHERE request_id = %s
+          AND status     = 'Pending'
+        RETURNING request_id
+    """
+    result = execute_write_query(
+        refuse_sql, (current_staff_id, request_id), return_result=True
+    )
+    if not result:
+        return jsonify({"error": "Request not found or already reviewed"}), 404
+
+    return jsonify({"message": "Delete request refused"}), 200
 # --- 3) MY PAYMENTS (Salary) ---
 
 @staff_bp.route('/salary', methods=['GET'])

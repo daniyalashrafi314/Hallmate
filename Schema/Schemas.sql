@@ -151,6 +151,24 @@ CREATE  TABLE PAYMENTS( --11
 
 );
 
+CREATE TYPE delete_request_status AS ENUM ('Pending', 'Refused');
+
+CREATE TABLE PAYMENT_DELETE_REQUESTS (
+    request_id    SERIAL PRIMARY KEY,
+    payment_id    INT NOT NULL,
+    requested_by  CHAR(10) NOT NULL,
+    requested_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status        delete_request_status DEFAULT 'Pending',
+    reviewed_by   CHAR(10) DEFAULT NULL,
+    reviewed_at   TIMESTAMP DEFAULT NULL,
+    FOREIGN KEY (payment_id)   REFERENCES PAYMENTS(payment_id) ON DELETE CASCADE,
+    FOREIGN KEY (requested_by) REFERENCES STAFFS(staff_id),
+    FOREIGN KEY (reviewed_by)  REFERENCES STAFFS(staff_id),
+    UNIQUE (payment_id)
+);
+
+
+
 CREATE TABLE   FEES( --12
     payment_id  INT PRIMARY KEY,
     student_id  CHAR(7)  NOT NULL,
