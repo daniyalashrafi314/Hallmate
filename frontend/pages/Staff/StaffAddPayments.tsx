@@ -43,6 +43,7 @@ interface PaymentDetail extends PaymentItem {
 interface DeleteRequest {
   request_id: number;
   payment_id: number;
+  request_status: 'Pending' | 'Refused';
   student_name: string;
   payment_type: string;
   amount: number;

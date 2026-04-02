@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify, Response
 from app.db import execute_read_query, execute_write_query
 from app.email_service import send_welcome_email
-from werkzeug.security import generate_password_hash
 import re
 import secrets
 import string
 from app.auth.middleware import token_required
+from app.security.passwords import hash_password
 
 # 1. Define the Blueprint
 staff_bp = Blueprint('staff', __name__)
@@ -147,6 +147,8 @@ def change_password():
 
     if new_password != confirm_password:
         return jsonify({"error": "Passwords do not match"}), 400
+
+    hashed_password = hash_password(new_password)
         
     sql = """
         UPDATE USERS
@@ -157,7 +159,7 @@ def change_password():
             WHERE staff_id = %s
             )
         """
-    execute_write_query(sql, (new_password, current_staff_id))
+    execute_write_query(sql, (hashed_password, current_staff_id))
     return jsonify({"message": "Password changed successfully"})
 
 # --- 2) NOTICE PAGE (View & Create) ---
@@ -1031,7 +1033,7 @@ def add_student():
     # generate password
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     raw_password = ''.join(secrets.choice(alphabet) for _ in range(10))
-    hashed_password = generate_password_hash(raw_password)
+    hashed_password = hash_password(raw_password)
 
     try:
         proc_sql = """

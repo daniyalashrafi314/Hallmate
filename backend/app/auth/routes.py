@@ -3,6 +3,7 @@ import jwt
 import datetime
 from app.db import execute_read_query # Assuming this is your DB helper
 from app.auth.middleware import SECRET_KEY # Use the same key from your middleware!
+from app.security.passwords import verify_password
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -24,10 +25,8 @@ def login():
     sql = "SELECT user_id, password FROM USERS WHERE email_address = %s"
     result = execute_read_query(sql, (email,))
 
-    # 3. Verify credentials
-    # NOTE: This assumes plain text passwords for development. 
-    # For production, you should use werkzeug.security.check_password_hash!
-    if not result or result[0]['password'] != password:
+    # 3. Verify credentials against the stored hash
+    if not result or not verify_password(result[0]['password'], password):
         return jsonify({'error': 'Invalid email or password'}), 401
         
     user_id = result[0]['user_id']

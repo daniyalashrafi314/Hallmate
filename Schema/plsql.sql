@@ -1,15 +1,24 @@
 CREATE OR REPLACE PROCEDURE register_new_student(
     p_student_id VARCHAR,
     p_email VARCHAR,
-    p_password VARCHAR,
+    p_password_hash VARCHAR,
     p_hall_id INT
 )
 
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    IF p_password_hash IS NULL OR (
+        p_password_hash NOT LIKE 'scrypt:%'
+        AND p_password_hash NOT LIKE 'pbkdf2:%'
+        AND p_password_hash NOT LIKE 'argon2:%'
+        AND p_password_hash NOT LIKE 'sha256:%'
+    ) THEN
+        RAISE EXCEPTION 'register_new_student requires a hashed password';
+    END IF;
+
     INSERT INTO USERS (user_id, email_address, password)
-    VALUES (p_student_id, p_email, p_password);
+    VALUES (p_student_id, p_email, p_password_hash);
 
     INSERT INTO STUDENTS (student_id, hall_id, user_id, status)
     VALUES (p_student_id, p_hall_id, p_student_id , 'ATTACHED');

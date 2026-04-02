@@ -1,0 +1,45 @@
+Sprint Map: Password Verification and Hashing Cleanup
+
+Goal
+- Make password handling consistent across login, password changes, and account creation.
+- Keep hashing and verification on the backend only.
+- Ensure all database writes store hashed passwords, never plaintext.
+
+Sprint 1: Audit and standardize password flow
+- Review all routes that read or write USERS.password.
+- Confirm login uses hash verification instead of plaintext comparison.
+- Confirm add-students already hashes before insert.
+- Confirm change-password hashes before update.
+- Review any stored procedure or helper that inserts into USERS.
+
+Sprint 2: Backend implementation
+- Update login route to use check_password_hash.
+- Update staff change-password route to hash new passwords before saving.
+- Add a shared password helper if needed so hashing logic is not duplicated.
+- Keep frontend password forms unchanged except for sending plaintext to backend.
+- Confirm any account-creation path that writes to USERS stores hashed values.
+
+Sprint 3: Database consistency cleanup
+- Scan USERS.password for any remaining plaintext values.
+- Rehash any legacy plaintext rows using the same Werkzeug format used by the backend.
+- Verify stored procedure inputs still receive hashed passwords.
+- If needed, document whether the procedure should hash internally or trust hashed input.
+
+Sprint 4: Validation and regression checks
+- Test login with a valid hashed password.
+- Test login with an invalid password and confirm rejection.
+- Test staff password change and confirm the stored value is hashed.
+- Test add-students flow and confirm the inserted password hash can be verified.
+- Re-run a database scan to confirm no plaintext passwords remain.
+
+Sprint 5: Cleanup and hardening
+- Remove temporary scripts used for password inspection and rehashing.
+- Add a short developer note documenting the rule: hash on write, verify on read.
+- Consider adding tests for login verification and password update hashing.
+
+Acceptance Criteria
+- All password writes to USERS are hashed.
+- Login verifies passwords with hash checking.
+- No plaintext passwords remain in USERS.
+- Frontend only submits passwords; it does not hash them.
+- Temporary migration scripts are removed after validation.

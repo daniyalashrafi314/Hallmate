@@ -4,15 +4,28 @@ import os
 
 # --- DATABASE CONFIGURATION ---
 # You can hardcode these for now, or use os.getenv() if you have a .env file
-DB_HOST = "localhost"
-DB_NAME = "hallmate_db" # Make sure this matches your DB name
-DB_USER = "hallmate_user"
-DB_PASSWORD = "hallmate123" # UPDATE THIS
+#DB_HOST = "localhost"
+#DB_NAME = "hallmate_db" # Make sure this matches your DB name
+#DB_USER = "hallmate_user"
+#DB_PASSWORD = "hallmate123" # UPDATE THIS
 
+DB_HOST = "ep-soft-water-a151g1bu.ap-southeast-1.aws.neon.tech"
+DB_NAME = "neondb"
+DB_USER = "neondb_owner"
+DB_PASSWORD = "npg_K4pd6hejACfO"
+DB_SSLMODE = "require"
+
+#def get_db_connection():
+#    """Establishes a connection to the database."""
+#    conn_str = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD}"
+#    # row_factory=dict_row makes results look like {'name': 'John', 'id': 1}
+#    conn = psycopg.connect(conn_str, row_factory=dict_row)
+#    return conn
 def get_db_connection():
-    """Establishes a connection to the database."""
-    conn_str = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD}"
-    # row_factory=dict_row makes results look like {'name': 'John', 'id': 1}
+    conn_str = (
+        f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} "
+        f"password={DB_PASSWORD} sslmode={DB_SSLMODE}"
+    )
     conn = psycopg.connect(conn_str, row_factory=dict_row)
     return conn
 
