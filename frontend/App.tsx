@@ -119,13 +119,12 @@ const App: React.FC = () => {
                         <Route path="/dashboard" element={userRole === UserRole.STUDENT ? <StudentHome /> : <StaffVisitors />} />
                         <Route path="/seat-application" element={<StudentSeatApplication />} />
                         <Route path="/payments" element={<StudentPayments />} />
-                        <Route path="/visitors" element={<StudentVisitors />} />
+                        <Route path="/visitors" element={userRole === UserRole.STUDENT ? <StudentVisitors /> : <StaffVisitors />} />
                         <Route path="/notices" element={<StudentNotices />} />
                         <Route path="/donations" element={userRole === UserRole.STUDENT ? <StudentDonations /> : <StaffDonations />} />
                         <Route path="/complaints" element={<StudentComplaints />} />
 
                         {/* Staff Routes */}
-                        <Route path="/visitors" element={<StaffVisitors />} />
                         <Route path="/add-payments" element={<StaffAddPayments />} />
                         <Route path="/add-students" element={<StaffAddStudents />} />
                         <Route path="/salary" element={<StaffSalary />} />

@@ -721,7 +721,7 @@ def add_student():
             proc_sql,
             (student_id, email_address.replace('@buet.ac.bd', ''), hashed_password, current_hall_id)
         )
-        
+
 
         if not success:
             return jsonify({"error": "Failed to add student."}), 500
@@ -740,3 +740,161 @@ def add_student():
         "student_id": student_id,
         "user_id": student_id
     }), 201
+
+    # --- VISITOR LOG PAGE ---
+
+@staff_bp.route('/visitors', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_visitors():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+
+    try:
+        limit = min(int(request.args.get('limit', 10)), 50)
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+    year_filter  = request.args.get('year',  None)
+    month_filter = request.args.get('month', None)
+    day_filter   = request.args.get('day',   None)
+    room_filter  = request.args.get('room',  None)
+    search       = request.args.get('search', None)
+
+    sql = """
+        SELECT
+            v.visitor_id,
+            v.name            AS visitor_name,
+            v.phone_number    AS visitor_phone,
+            v.relationship,
+            TO_CHAR(v.entry_time, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS entry_time,
+            TO_CHAR(v.exit_time,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS exit_time,
+            s.student_id,
+            s.name            AS student_name,
+            a.room_id
+        FROM VISITORS v
+        JOIN STUDENTS s  ON v.student_id = s.student_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.hall_id = %s
+    """
+    params = [current_hall_id]
+
+    if not year_filter and not month_filter and not day_filter:
+        sql += " AND v.entry_time::DATE = CURRENT_DATE"
+    else:
+        if year_filter:
+            sql += " AND EXTRACT(YEAR  FROM v.entry_time) = %s"
+            params.append(year_filter)
+        if month_filter:
+            sql += " AND EXTRACT(MONTH FROM v.entry_time) = %s"
+            params.append(month_filter)
+        if day_filter:
+            sql += " AND EXTRACT(DAY   FROM v.entry_time) = %s"
+            params.append(day_filter)
+
+    if room_filter:
+        sql += " AND a.room_id = %s"
+        params.append(room_filter)
+
+    if search:
+        sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        params.append(f"%{search}%")
+        params.append(f"%{search}%")
+
+    count_params = list(params)
+
+    sql += " ORDER BY v.entry_time DESC LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
+
+    visitors = execute_read_query(sql, tuple(params))
+
+    count_sql = """
+        SELECT COUNT(*) AS total
+        FROM VISITORS v
+        JOIN STUDENTS s  ON v.student_id = s.student_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.hall_id = %s
+    """
+    if not year_filter and not month_filter and not day_filter:
+        count_sql += " AND v.entry_time::DATE = CURRENT_DATE"
+    else:
+        if year_filter:
+            count_sql += " AND EXTRACT(YEAR  FROM v.entry_time) = %s"
+        if month_filter:
+            count_sql += " AND EXTRACT(MONTH FROM v.entry_time) = %s"
+        if day_filter:
+            count_sql += " AND EXTRACT(DAY   FROM v.entry_time) = %s"
+
+    if room_filter:
+        count_sql += " AND a.room_id = %s"
+
+    if search:
+        count_sql += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+
+    total_count = execute_read_query(count_sql, tuple(count_params))
+    total = total_count[0]['total'] if total_count else 0
+
+    return jsonify({
+        "data": visitors,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "total": total
+        }
+    }), 200
+
+
+@staff_bp.route('/visitors/<string:visitor_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_visitor_detail(visitor_id):
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+
+    sql = """
+        SELECT
+            v.visitor_id,
+            v.name            AS visitor_name,
+            v.phone_number    AS visitor_phone,
+            v.relationship,
+            TO_CHAR(v.entry_time, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS entry_time,
+            TO_CHAR(v.exit_time,  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS exit_time,
+            s.student_id,
+            s.name            AS student_name,
+            s.phone_number    AS student_phone,
+            s.status          AS student_status,
+            a.room_id,
+            (s.photo IS NOT NULL) AS student_has_photo
+        FROM VISITORS v
+        JOIN STUDENTS s  ON v.student_id = s.student_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE v.visitor_id = %s
+          AND s.hall_id = %s
+    """
+    result = execute_read_query(sql, (visitor_id, current_hall_id))
+
+    if not result:
+        return jsonify({"error": "Visitor not found or unauthorized"}), 404
+
+    return jsonify(result[0]), 200
+
+
+@staff_bp.route('/visitors/<string:visitor_id>', methods=['DELETE'])
+@token_required(allowed_roles=['staff'])
+def delete_visitor(visitor_id):
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+
+    sql = """
+        DELETE FROM VISITORS v
+        USING STUDENTS s
+        WHERE v.student_id = s.student_id
+          AND v.visitor_id = %s
+          AND s.hall_id    = %s
+        RETURNING v.visitor_id
+    """
+    result = execute_write_query(sql, (visitor_id, current_hall_id))
+
+    if not result:
+        return jsonify({"error": "Visitor not found or unauthorized"}), 403
+
+    return jsonify({"message": "Visitor log deleted"}), 200
