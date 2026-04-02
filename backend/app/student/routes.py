@@ -82,6 +82,16 @@ def get_student_dashboard():
         "complaint": complaint_data[0] if complaint_data else None
     }), 200
 
+@student_bp.route('/status', methods=['GET'])
+@token_required(allowed_roles=['student'])
+def get_student_status():
+    current_student_id = request.current_user_id
+    sql = "SELECT status FROM STUDENTS WHERE student_id = %s"
+    result = execute_read_query(sql, (current_student_id,))
+    if result:
+        return jsonify({"status": result[0]['status']}), 200
+    return jsonify({"error": "Student not found"}), 404
+
 # --- 2) PAYMENTS (Fees) ---
 
 @student_bp.route('/payments', methods=['GET'])
@@ -132,6 +142,7 @@ def process_payment(payment_id):
 @student_bp.route('/donations', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def list_donations():
+    current_student_id = request.current_user_id
     sql = """
         SELECT 
             d.donation_id as id,
@@ -150,9 +161,10 @@ def list_donations():
         LEFT JOIN STUDENTS st ON af.student_id = st.student_id
         LEFT JOIN STAFFS sf ON af.staff_id = sf.staff_id
         WHERE d.end_date >= CURRENT_DATE
+          AND NOT (COALESCE(st.student_id, sf.staff_id) = %s AND d.status = 'Approved')
         ORDER BY d.start_date DESC
     """
-    donations = execute_read_query(sql)
+    donations = execute_read_query(sql, (current_student_id,))
     return jsonify(donations)
 
 @student_bp.route('/donations', methods=['POST'])
@@ -321,17 +333,36 @@ def add_visitor():
         if not data.get(field) or str(data.get(field)).strip() == "":
             return jsonify({"error": f"Field '{field}' is required"}), 400
     
-    if data['entry_time'] >= data['exit_time']:
+    # Check if student is resident
+    student_sql = "SELECT status FROM STUDENTS WHERE student_id = %s"
+    student = execute_read_query(student_sql, (current_student_id,))
+    if not student or student[0]['status'] != 'RESIDENT':
+        return jsonify({"error": "Only resident students can add visitors"}), 403
+    
+    # Parse times
+    try:
+        entry_time = datetime.fromisoformat(data['entry_time'].replace('Z', '+00:00'))
+        exit_time = datetime.fromisoformat(data['exit_time'].replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({"error": "Invalid date format"}), 400
+    
+    if entry_time >= exit_time:
         return jsonify({"error": "Entry time must be before exit time"}), 400
+    
+    if exit_time <= datetime.now():
+        return jsonify({"error": "You cannot enter a visit in the past"}), 400
+    
+    if (exit_time - entry_time).total_seconds() > 4 * 3600:
+        return jsonify({"error": "Visit duration cannot exceed 4 hours"}), 400
+    
+    if not (6 <= entry_time.hour <= 21 and 6 <= exit_time.hour <= 21):
+        return jsonify({"error": "Visits are only allowed between 6 AM and 10 PM"}), 400
     
     date_str = datetime.now().strftime('%Y%m%d')
     random_suffix = str(random.randint(100, 999))
     visitor_id = f"{date_str}-{random_suffix}"
     
-    phone = data.get('phone') if data.get('phone') else None
-    exit_time = data.get('exit_time') if data.get('exit_time') else None
-    entry_time = data.get('entry_time') if data.get('entry_time') else None
-    
+    phone = data.get('phone')
     sql = """
         INSERT INTO VISITORS (visitor_id, student_id, name, phone_number, relationship, entry_time, exit_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)

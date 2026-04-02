@@ -42,9 +42,12 @@ CREATE TABLE VISITORS( --4
     hidden_by_student BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (student_id)
         REFERENCES STUDENTS(student_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
 
-    CONSTRAINT check_visitor_times CHECK (entry_time < exit_time)
+    CONSTRAINT check_visitor_times CHECK (entry_time < exit_time),
+    CONSTRAINT check_no_past_visits CHECK (exit_time > CURRENT_TIMESTAMP),
+    CONSTRAINT check_visit_duration CHECK (exit_time - entry_time <= INTERVAL '4 hours'),
+    CONSTRAINT check_visit_hours CHECK (EXTRACT(HOUR FROM entry_time) BETWEEN 6 AND 21 AND EXTRACT(HOUR FROM exit_time) BETWEEN 6 AND 21)
 );
 
 CREATE TYPE c_type AS ENUM('Room', 'Dining', 'Toilet', 'Roommate','Staff', 'Facilities', 'Other'); --complaint on

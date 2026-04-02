@@ -15,6 +15,7 @@ const StudentVisitors: React.FC = () => {
   const { theme } = useAppContext();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [studentStatus, setStudentStatus] = useState<string>('');
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -26,6 +27,21 @@ const StudentVisitors: React.FC = () => {
   const API_BASE = 'http://localhost:5000/student/visitors';
 
   // --- API Calls ---
+  const fetchStudentStatus = async () => {
+    try {
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch('http://localhost:5000/student/status', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStudentStatus(data.status);
+      }
+    } catch (error) {
+      console.error("Failed to fetch student status:", error);
+    }
+  };
+
   const fetchVisitors = async () => {
     try {
       const token = localStorage.getItem('hallmate_token');
@@ -51,14 +67,35 @@ const StudentVisitors: React.FC = () => {
   };
 
   useEffect(() => {
+    fetchStudentStatus();
     fetchVisitors();
   }, []);
 
   const handleAddVisitor = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (new Date(formData.entry_time) >= new Date(formData.exit_time)) {
-      alert("Error: Please check the entry and exit times carefully.");
+    const entry = new Date(formData.entry_time);
+    const exit = new Date(formData.exit_time);
+    const now = new Date();
+
+    if (entry >= exit) {
+      alert("Error: Entry time must be before exit time.");
+      return;
+    }
+
+    if (exit <= now) {
+      alert("Error: You cannot enter a visit in the past.");
+      return;
+    }
+
+    const duration = (exit.getTime() - entry.getTime()) / (1000 * 3600); // hours
+    if (duration > 4) {
+      alert("Error: Visit duration cannot exceed 4 hours.");
+      return;
+    }
+
+    if (entry.getHours() < 6 || entry.getHours() > 21 || exit.getHours() < 6 || exit.getHours() > 21) {
+      alert("Error: Visits are only allowed between 6 AM and 10 PM.");
       return;
     }
 
@@ -185,12 +222,14 @@ const StudentVisitors: React.FC = () => {
               <Trash2 className="w-5 h-5" /> Clear Log
             </button>
           )}
-          <button
-            onClick={() => setShowModal(true)}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-bold ${theme.primary} shadow-md hover:shadow-lg transition-all`}
-          >
-            <Plus className="w-5 h-5" /> Expected Visitor
-          </button>
+          {studentStatus === 'RESIDENT' && (
+            <button
+              onClick={() => setShowModal(true)}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-bold ${theme.primary} shadow-md hover:shadow-lg transition-all`}
+            >
+              <Plus className="w-5 h-5" /> Expected Visitor
+            </button>
+          )}
         </div>
       </div>
 
@@ -201,7 +240,12 @@ const StudentVisitors: React.FC = () => {
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center flex flex-col items-center">
           <Users className="w-12 h-12 text-gray-300 mb-3" />
           <h3 className="text-lg font-bold text-gray-800">No Visitors Logged</h3>
-          <p className="text-gray-500">Add an expected visitor to notify the hall gates.</p>
+          <p className="text-gray-500">
+            {studentStatus === 'ATTACHED' 
+              ? "Only resident students are allowed to have visitors in the hall." 
+              : "Add an expected visitor to notify the hall gates."
+            }
+          </p>
         </div>
       ) :
         <div className="space-y-4">

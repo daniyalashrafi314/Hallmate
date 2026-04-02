@@ -274,7 +274,7 @@ const StudentDonations: React.FC = () => {
 
             {/* Action Buttons Section */}
             <div className="flex flex-col justify-end min-w-[120px] gap-2">
-              {activeTab === 'all' && (
+              {activeTab === 'all' && !(donation.requesterId === user?.id && donation.status === 'Approved') && (
                 <button 
                   onClick={() => setPayModalFor(donation)}
                   className={`flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-white font-bold bg-green-600 hover:bg-green-700 transition-colors shadow-md`}

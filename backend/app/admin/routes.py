@@ -146,9 +146,7 @@ def approve_donation(donation_id):
 
 
 
- # --- SEAT APPROVALS
-
-# --- SEAT APPROVALS ---
+# --- 5) SEAT APPROVALS ---
 
 @admin_bp.route('/seat-approvals', methods=['GET'])
 @token_required(allowed_roles=['admin']) # Adjust to 'provost' if you have a separate role!
@@ -176,7 +174,7 @@ def get_all_seat_applications():
             sa.priority_value DESC NULLS LAST,
             CAST(SUBSTRING(sa.student_id FROM 1 FOR 2) AS INT) ASC
     """
-    # Assuming execute_read_query returns a list of dictionaries
+
     return jsonify(execute_read_query(sql)), 200
 
 @admin_bp.route('/seat-approvals/<int:app_id>/status', methods=['PUT', 'OPTIONS'])
