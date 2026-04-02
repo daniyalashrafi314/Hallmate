@@ -53,6 +53,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION get_batch_year(p_student_id VARCHAR)
+RETURNS INT AS $$
+BEGIN
+    RETURN CAST('20' || SUBSTRING(p_student_id FROM 1 FOR 2) AS INT);
+END;
+$$ LANGUAGE plpgsql;
+
+
 CREATE OR REPLACE FUNCTION handle_seat_allocation()
 RETURNS TRIGGER AS $$
 BEGIN

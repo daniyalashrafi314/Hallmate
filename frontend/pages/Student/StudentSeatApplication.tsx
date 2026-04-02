@@ -145,7 +145,7 @@ const StudentSeatApplication: React.FC = () => {
           <CheckCircle2 className="w-12 h-12" />
         </div>
         <h2 className="text-2xl font-bold text-gray-800">Application Approved</h2>
-        <p className="text-gray-500 mt-2">You have been allocated a seat. Please check your profile or notices for room details.</p>
+        <p className="text-gray-500 mt-2">You have been approved for a seat. If you have not been allocated a room yet, please keep an eye on your profile or notifications for updates.</p>
       </div>
     );
   }

@@ -18,6 +18,7 @@ const Sidebar: React.FC = () => {
   const navItems = {
     [UserRole.STUDENT]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },
+      { to: '/profile', label: 'Profile', icon: UserCircle },
       { to: '/seat-application', label: 'Seat Application', icon: Layers },
       { to: '/payments', label: 'Payments', icon: CreditCard },
       { to: '/notices', label: 'Notices & Events', icon: Calendar },

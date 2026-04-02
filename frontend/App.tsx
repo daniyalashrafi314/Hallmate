@@ -16,6 +16,7 @@ import StudentVisitors from './pages/Student/StudentVisitors';
 import StudentNotices from './pages/Student/StudentNotices';
 import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
+import StudentProfile from './pages/Student/StudentProfile';
 
 // Staff Pages
 import StaffVisitors from './pages/Staff/StaffVisitors';
@@ -60,7 +61,14 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 
   // If specific roles are required, check them
   if (allowedRoles && !allowedRoles.includes(userRole)) {
-    return <Navigate to="/dashboard" replace />; // Send them back to their own dashboard
+    // Send them back to their own dashboard; provost currently has no dashboard route
+    /*if (userRole === UserRole.PROVOST) {
+      return <Navigate to="/rooms" replace />;
+    } else if(userRole === UserRole.STAFF) {
+      return <Navigate to="/profile" replace />;
+    }*/
+
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -130,7 +138,7 @@ const App: React.FC = () => {
                         <Route path="/salary" element={<StaffSalary />} />
                         <Route path="/seat-applications" element={<StaffSeatApplications />} />
                         <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />
-                        <Route path="/profile" element={<StaffProfile />} />
+                        <Route path="/profile" element={userRole === UserRole.STUDENT ? <StudentProfile /> : <StaffProfile />} />
                         <Route path="/notices-manage" element={<StaffNotices />} />
 
                         {/* Provost Routes */}

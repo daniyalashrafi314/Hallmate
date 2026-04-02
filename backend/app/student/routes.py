@@ -1,11 +1,154 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, Response, send_file
 from app.db import execute_read_query, execute_write_query
 from datetime import datetime
 import random, io
 from app.auth.middleware import token_required
+from app.security.passwords import hash_password, verify_password
 
 # 1. Define the Blueprint
 student_bp = Blueprint('student', __name__)
+
+# --- STUDENT PROFILE ---
+@student_bp.route('/profile', methods=['GET'])
+@token_required(allowed_roles=['student'])
+def get_student_profile():
+    current_student_id = request.current_user_id
+
+    sql = """
+        SELECT
+            s.student_id,
+            s.name,
+            s.phone_number,
+            COALESCE(get_department_name(s.student_id), '') AS department,
+            COALESCE(get_batch_year(s.student_id)::text, '') AS batch_year,
+            h.name AS hall_name,
+            u.email_address,
+            (s.photo IS NOT NULL) AS has_photo,
+            (COALESCE(s.name, '') = '' OR COALESCE(s.phone_number, '') = '') AS needs_profile_completion,
+            COALESCE(a.room_id, '') AS room_id,
+            COALESCE(a.seat_number::text, '') AS seat_number
+        FROM STUDENTS s
+        JOIN USERS u ON s.user_id = u.user_id
+        LEFT JOIN HALLS h ON s.hall_id = h.hall_id
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.student_id = %s
+    """
+    result = execute_read_query(sql, (current_student_id,))
+    if not result:
+        return jsonify({'error': 'Student not found'}), 404
+    return jsonify(result[0])
+
+
+@student_bp.route('/profile/photo', methods=['GET'])
+@token_required(allowed_roles=['student'])
+def get_student_profile_photo():
+    current_student_id = request.current_user_id
+    sql = "SELECT photo FROM STUDENTS WHERE student_id = %s"
+    result = execute_read_query(sql, (current_student_id,))
+
+    if not result or not result[0].get('photo'):
+        return jsonify({'error': 'No photo found'}), 404
+
+    return Response(
+        result[0]['photo'],
+        mimetype='image/jpeg',
+        headers={'Content-Disposition': 'inline; filename=student_photo.jpg'}
+    )
+
+
+@student_bp.route('/profile', methods=['PUT'])
+@token_required(allowed_roles=['student'])
+def update_student_profile():
+    current_student_id = request.current_user_id
+
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        name = request.form.get('name')
+        phone_number = request.form.get('phone_number')
+        photo_file = request.files.get('photo')
+    else:
+        data = request.get_json() or {}
+        name = data.get('name')
+        phone_number = data.get('phone_number')
+        photo_file = None
+
+    if not name or not name.strip() or not phone_number or not phone_number.strip():
+        return jsonify({'error': 'name and phone_number are required'}), 400
+
+    update_clauses = ['name = %s', 'phone_number = %s']
+    update_values = [name.strip(), phone_number.strip()]
+
+    if photo_file:
+        photo_bytes = photo_file.read()
+        update_clauses.append('photo = %s')
+        update_values.append(photo_bytes)
+
+    update_values.append(current_student_id)
+    sql = f"UPDATE STUDENTS SET {', '.join(update_clauses)} WHERE student_id = %s"
+    execute_write_query(sql, tuple(update_values))
+
+    return jsonify({'message': 'Profile updated successfully'})
+
+
+@student_bp.route('/verify-password', methods=['POST'])
+@token_required(allowed_roles=['student'])
+def verify_old_password():
+    current_student_id = request.current_user_id
+    data = request.get_json() or {}
+    old_password = data.get('old_password')
+
+    if not old_password:
+        return jsonify({'error': 'Password is required'}), 400
+
+    sql = """
+        SELECT u.password
+        FROM USERS u
+        JOIN STUDENTS s ON s.user_id = u.user_id
+        WHERE s.student_id = %s
+    """
+    result = execute_read_query(sql, (current_student_id,))
+    if not result or not verify_password(result[0]['password'], old_password):
+        return jsonify({'error': 'Current password incorrect'}), 401
+
+    return jsonify({'message': 'Password verified'}), 200
+
+
+@student_bp.route('/change-password', methods=['PUT'])
+@token_required(allowed_roles=['student'])
+def change_student_password():
+    current_student_id = request.current_user_id
+    data = request.get_json() or {}
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+    confirm_password = data.get('confirm_password')
+
+    if not old_password or not new_password or not confirm_password:
+        return jsonify({'error': 'Old and new password are required'}), 400
+
+    if new_password != confirm_password:
+        return jsonify({'error': 'Passwords do not match'}), 400
+
+    sql = """
+        SELECT u.password
+        FROM USERS u
+        JOIN STUDENTS s ON s.user_id = u.user_id
+        WHERE s.student_id = %s
+    """
+    result = execute_read_query(sql, (current_student_id,))
+    if not result or not verify_password(result[0]['password'], old_password):
+        return jsonify({'error': 'Current password incorrect'}), 401
+
+    hashed = hash_password(new_password)
+    sql2 = """
+        UPDATE USERS
+        SET password = %s
+        WHERE user_id = (
+            SELECT user_id FROM STUDENTS WHERE student_id = %s
+        )
+    """
+    execute_write_query(sql2, (hashed, current_student_id))
+
+    return jsonify({'message': 'Password changed successfully'})
+
 
 # --- 1) STUDENT HOME ---
 
@@ -464,11 +607,6 @@ def remove_complaint(complaint_id):
 
 # --- 7) SEAT APPLICATION ---
 
-def derive_batch_year(student_id):
-    if student_id and len(student_id) >= 2 and student_id[:2].isdigit():
-        return f"20{student_id[:2]}"
-    return "Unknown"
-
 @student_bp.route('/seat-application/status', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_application_status():
@@ -478,7 +616,7 @@ def get_application_status():
     application = execute_read_query(app_sql, (current_student_id,))
     
     stu_sql = """
-                SELECT name, phone_number, get_department_name(student_id) as department 
+                SELECT name, phone_number, get_department_name(student_id) as department, get_batch_year(student_id) as batch_year
                 FROM STUDENTS 
                 WHERE student_id = %s
             """
@@ -493,9 +631,9 @@ def get_application_status():
     profile = {
         "student_id": current_student_id,
         "name": stu_data['name'],
-        "phone": stu_data['phone_number'] or "",
-        "batch_year": derive_batch_year(current_student_id),
-        "department": stu_data['department']
+        "department": stu_data['department'],
+        "batch_year": stu_data['batch_year'],
+        "phone": stu_data['phone_number'] or ""
     }
 
     app_status = application[0]['status'] if application else 'None'

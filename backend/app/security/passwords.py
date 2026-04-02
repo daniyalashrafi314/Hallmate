@@ -8,7 +8,12 @@ def hash_password(password: str) -> str:
 def verify_password(stored_password: str, entered_password: str) -> bool:
     if not stored_password or not entered_password:
         return False
-    return check_password_hash(stored_password, entered_password)
+
+    # Support hashed passwords (preferred) and fallback to raw compare for legacy data.
+    if looks_like_hashed_password(stored_password):
+        return check_password_hash(stored_password, entered_password)
+
+    return stored_password == entered_password
 
 
 def looks_like_hashed_password(value: str) -> bool:
