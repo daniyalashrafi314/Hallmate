@@ -30,6 +30,7 @@ import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
+import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
 
 // 1. Update Context to handle actual Authentication state
 interface AppContextType {
@@ -73,7 +74,7 @@ const App: React.FC = () => {
   
   // In a real app, you might fetch the full user object from the backend using the ID
   const [user, setUser] = useState<User | null>(
-    localStorage.getItem('user_id') ? { id: localStorage.getItem('user_id')!, name: 'Logged In User', email: '', phone: '' } : null
+    localStorage.getItem('user_id') ? { id: localStorage.getItem('user_id')!, name: 'Logged In User', email: '', role: userRole || UserRole.STUDENT } : null
   );
 
   // Default theme to Student if not logged in just for the login screen styling
@@ -85,7 +86,7 @@ const App: React.FC = () => {
     localStorage.setItem('user_id', userId);
     localStorage.setItem('user_role', role);
     setUserRole(role);
-    setUser({ id: userId, name: userId, email: '', phone: '' }); // Simplified user obj
+    setUser({ id: userId, name: userId, email: '', role: role }); // Simplified user obj
   };
 
   const logout = () => {
@@ -136,6 +137,7 @@ const App: React.FC = () => {
                         {/* Provost Routes */}
                         <Route path="/rooms" element={<ProvostRooms />} />
                         <Route path="/users" element={<ProvostUserManagement />} />
+                        <Route path="/approvals" element={<ProvostSeatApprovals />} />
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
                       </Routes>

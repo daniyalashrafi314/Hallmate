@@ -45,6 +45,8 @@ def login():
         'user_id': user_id
     }), 200
 
+
+"""
 @auth_bp.route('/register', methods=['POST', 'OPTIONS'])
 def register():
     if request.method == 'OPTIONS': return '', 200
@@ -65,3 +67,6 @@ def register():
         return jsonify({"message": "User registered successfully!"}), 201
     except Exception as e:
         return jsonify({"error": "User already exists or invalid data"}), 400
+
+
+"""

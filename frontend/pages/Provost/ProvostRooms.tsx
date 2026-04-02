@@ -48,7 +48,7 @@ const ProvostRooms: React.FC = () => {
       if (roomRes.ok) setRooms(await roomRes.json());
       
       // Fetch Approved Students
-      const studentRes = await fetch(`${API_BASE}/approved-students`, { headers: authHeaders });
+      const studentRes = await fetch(`${API_BASE}/approved-students`,{ headers: authHeaders,});
       if (studentRes.status === 401 || studentRes.status === 403) {
         window.location.href = '#/login'; 
         return;
@@ -67,11 +67,20 @@ const ProvostRooms: React.FC = () => {
   const handleAllocate = async () => {
     if (!selectedSeat || !selectedStudentToAllocate) return;
     try {
-      await fetch(`${API_BASE}/allocate`, {
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE}/allocate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+         },
         body: JSON.stringify({ student_id: selectedStudentToAllocate, room_id: selectedSeat.roomId, seat_number: selectedSeat.seatNumber })
       });
+
+      if(response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       setSelectedSeat(null);
       setSelectedStudentToAllocate('');
       fetchData(); // Refresh grid
@@ -81,11 +90,20 @@ const ProvostRooms: React.FC = () => {
   const handleDeallocate = async () => {
     if (!selectedSeat) return;
     try {
-      await fetch(`${API_BASE}/deallocate`, {
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE}/deallocate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+         },
         body: JSON.stringify({ student_id: selectedSeat.studentId, room_id: selectedSeat.roomId, seat_number: selectedSeat.seatNumber })
       });
+
+      if(response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
       setSelectedSeat(null);
       fetchData(); // Refresh grid
     } catch (e) { alert("Deallocation failed."); }

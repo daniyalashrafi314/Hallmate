@@ -34,7 +34,7 @@ export interface Visitor {
 export interface ResidencyApplication {
   id: string;
   studentId: string;
-  status: 'Pending' | 'Approved' | 'Denied';
+  status: 'Pending' | 'Approved' | 'Refused';
   reasoning: string;
   priority?: number;
 }
@@ -49,5 +49,5 @@ export interface Notice {
 export interface Room {
   id: string;
   floor: number;
-  seats: { id: string; studentId: string | null }[];
+  seats: { seat_number: number; studentId: string | null }[];
 }

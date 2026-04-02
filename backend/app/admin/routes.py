@@ -31,30 +31,6 @@ def get_all_staff():
 
 
 
-# --- 2) MANAGE SEAT APPLICATIONS ---
-@admin_bp.route('/seat-applications', methods=['GET'])
-@token_required(allowed_roles=['admin'])
-def view_applications():
-    sql = "SELECT * FROM SEAT_APPLICATION WHERE status = 'Pending' ORDER BY priority_value DESC"
-    return jsonify(execute_read_query(sql))
-
-@admin_bp.route('/seat-applications/<int:app_id>', methods=['PUT', 'OPTIONS'])
-@token_required(allowed_roles=['admin'])
-def process_application(app_id):
-    # Handle CORS Preflight
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    data = request.get_json()
-    new_status = data.get('status') 
-    
-    sql = "UPDATE SEAT_APPLICATION SET status = %s WHERE application_id = %s"
-    if execute_write_query(sql, (new_status, app_id)):
-        return jsonify({"message": f"Application {new_status}"})
-    return jsonify({"error": "Update failed"}), 400
-
-
-
 # --- 3) SEAT ALLOCATION (The Core Logic) ---
 
 @admin_bp.route('/rooms', methods=['GET'])
@@ -158,6 +134,7 @@ def get_pending_donations():
 @admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def approve_donation(donation_id):
+
     # Handle CORS Preflight
     if request.method == 'OPTIONS':
         return '', 200
@@ -166,3 +143,56 @@ def approve_donation(donation_id):
     if execute_write_query(sql, (donation_id,)):
         return jsonify({"message": "Donation request approved and is now public"})
     return jsonify({"error": "Approval failed"}), 400
+
+
+
+ # --- SEAT APPROVALS
+
+# --- SEAT APPROVALS ---
+
+@admin_bp.route('/seat-approvals', methods=['GET'])
+@token_required(allowed_roles=['admin']) # Adjust to 'provost' if you have a separate role!
+def get_all_seat_applications():
+    sql = """
+        SELECT 
+            sa.application_id, 
+            sa.student_id, 
+            s.name, 
+            s.phone_number,
+            get_department_name(sa.student_id) AS department,
+            CAST(SUBSTRING(sa.student_id FROM 1 FOR 2) AS INT) AS batch_year,
+            sa.description, 
+            sa.status, 
+            sa.priority_value,
+            sa.date
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        ORDER BY 
+            CASE sa.status 
+                WHEN 'Pending' THEN 1 
+                WHEN 'Approved' THEN 2 
+                WHEN 'Refused' THEN 3
+            END,
+            sa.priority_value DESC NULLS LAST,
+            CAST(SUBSTRING(sa.student_id FROM 1 FOR 2) AS INT) ASC
+    """
+    # Assuming execute_read_query returns a list of dictionaries
+    return jsonify(execute_read_query(sql)), 200
+
+@admin_bp.route('/seat-approvals/<int:app_id>/status', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def update_seat_approval_status(app_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    data = request.get_json()
+    new_status = data.get('status') 
+    
+    if new_status not in ['Approved', 'Refused']:
+        return jsonify({"error": "Invalid status"}), 400
+
+    sql = "UPDATE SEAT_APPLICATION SET status = %s WHERE application_id = %s"
+    if execute_write_query(sql, (new_status, app_id)):
+        return jsonify({"message": f"Application {new_status.lower()} successfully."}), 200
+    return jsonify({"error": "Failed to update status."}), 500
