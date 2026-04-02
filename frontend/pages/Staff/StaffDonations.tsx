@@ -32,6 +32,8 @@ const StaffDonations: React.FC = () => {
   // --- API URL (Adjust to your backend) ---
   const API_BASE = 'http://localhost:5000/staff/donations';
 
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
   // --- 1. Fetch Data ---
   const fetchDonations = async (showSpinner = true) => {
     try {
@@ -341,6 +343,7 @@ const StaffDonations: React.FC = () => {
                     <label className="block text-sm font-bold text-gray-700 mb-2">Needed By</label>
                     <input 
                       type="date"
+                      min={tomorrowStr}
                       value={formData.endDate}
                       onChange={(e) => setFormData({...formData, endDate: e.target.value})}
                       className="w-full p-4 border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 font-medium"

@@ -15,6 +15,5 @@ def verify_password(stored_password: str, entered_password: str) -> bool:
 
     return stored_password == entered_password
 
-
 def looks_like_hashed_password(value: str) -> bool:
     return isinstance(value, str) and value.startswith(("scrypt:", "pbkdf2:", "argon2:", "sha256:"))

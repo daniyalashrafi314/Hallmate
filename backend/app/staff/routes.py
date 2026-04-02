@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Blueprint, request, jsonify, Response
 from app.db import execute_read_query, execute_write_query
 from app.email_service import send_welcome_email
@@ -849,6 +851,16 @@ def create_staff_donation_request():
     data = request.get_json()
     desc = data.get('description')
     end_date = data.get('endDate')
+
+    try:
+        # Assuming the frontend sends 'YYYY-MM-DD'
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # 2. Enforce the Future Date constraint
+        if end_date <= datetime.date.today():
+            return jsonify({"error": "Set a future date."}), 400        
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
     if not desc or not end_date:
         return jsonify({"error": "Description and end date are required"}), 400

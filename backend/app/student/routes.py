@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, Response, send_file
 from app.db import execute_read_query, execute_write_query
-from datetime import datetime
+from datetime import date, datetime
 import random, io
 from app.auth.middleware import token_required
 from app.security.passwords import hash_password, verify_password
@@ -318,6 +318,17 @@ def create_donation():
     desc = data.get('description')
     end_date = data.get('endDate')
     
+    try:
+        # Assuming the frontend sends 'YYYY-MM-DD'
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # 2. Enforce the Future Date constraint
+        if end_date <= date.today():
+            return jsonify({"error": "Set a future date."}), 400
+            
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
     sql = """
         WITH new_donation AS (
             INSERT INTO DONATIONS (description, end_date) 
@@ -604,6 +615,8 @@ def remove_complaint(complaint_id):
     if success:
         return jsonify({"message": "Complaint removed"}), 200
     return jsonify({"error": "Cannot delete this complaint (it may already be processed)"}), 400
+
+
 
 # --- 7) SEAT APPLICATION ---
 
