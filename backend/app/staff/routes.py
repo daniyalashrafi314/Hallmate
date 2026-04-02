@@ -17,6 +17,38 @@ def get_current_hall_id(staff_id):
     result = execute_read_query(sql, (staff_id,))
     return result[0]['hall_id'] if result else None
 
+#Staff page
+# --- ADMIN DASHBOARD ---
+
+@staff_bp.route('/dashboard', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_dashboard():
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    sql = """
+        SELECT
+            s.staff_id,
+            s.name       AS name,
+            s.phone_number,
+            u.email_address,
+            h.name       AS hall_name,
+            h.hall_id,
+            (s.photo IS NOT NULL) AS has_photo
+        FROM STAFFS s
+        JOIN USERS u  ON s.user_id  = u.user_id
+        JOIN HALLS h  ON s.hall_id  = h.hall_id
+        WHERE s.staff_id = %s
+    """
+    result = execute_read_query(sql, (current_staff_id,))
+    if not result:
+        return jsonify({"error": "Staff not found"}), 404
+
+    return jsonify(result[0]), 200
+
+
+
+
 
 # --- 1) STAFF PROFILE PAGE ---
 
