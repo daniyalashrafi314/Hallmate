@@ -19,6 +19,7 @@ import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
 import StudentProfile from './pages/Student/StudentProfile';
 import StudentEvents from './pages/Student/StudentEvents'
+import StudentForum from './pages/Student/StudentForum';
 
 // Staff Pages
 import StaffVisitors from './pages/Staff/StaffVisitors';
@@ -31,7 +32,9 @@ import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 import StaffTasks from './pages/Staff/StaffTasks';
 import StaffDashboard from './pages/Staff/StaffDashboard';
+import StaffForum from './pages/Staff/StaffForum';
 import ProvostProfile from './pages/Provost/ProvostProfile';
+import ProvostForum from './pages/Provost/ProvostForum';
 import StaffEvents from './pages/Staff/StaffEvents';
 
 // Provost Pages
@@ -155,6 +158,14 @@ const App: React.FC = () => {
                         <Route path="/add-payments" element={<StaffAddPayments />} />
                         <Route path="/add-students" element={<StaffAddStudents />} />
                         <Route path="/salary" element={<StaffSalary />} />
+                        <Route
+                          path="/forum"
+                          element={userRole === UserRole.STUDENT ? <StudentForum /> : userRole === UserRole.STAFF ? <StaffForum /> : <ProvostForum />}
+                        />
+                        <Route
+                          path="/forum/:postId"
+                          element={userRole === UserRole.STUDENT ? <StudentForum /> : userRole === UserRole.STAFF ? <StaffForum /> : <ProvostForum />}
+                        />
                         <Route path="/seat-applications" element={<StaffSeatApplications />} />
                         <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />
                         <Route

@@ -13,6 +13,7 @@ BEGIN
         AND p_password_hash NOT LIKE 'pbkdf2:%'
         AND p_password_hash NOT LIKE 'argon2:%'
         AND p_password_hash NOT LIKE 'sha256:%'
+        AND p_password_hash NOT LIKE '$2%'
     ) THEN
         RAISE EXCEPTION 'register_new_student requires a hashed password';
     END IF;
@@ -88,14 +89,6 @@ FOR EACH ROW
 EXECUTE FUNCTION handle_seat_allocation();
 
 
--- 1. Create the ENUM type
-CREATE TYPE notification_type AS ENUM ('DONATION', 'EVENT', 'NOTICE', 'PAYMENT', 'COMPLAINT', 'SEAT_APPLICATION');
-
--- 2. Update the NOTIFICATIONS table to use the ENUM
--- (The USING clause safely casts any existing string data to the new enum format)
-ALTER TABLE NOTIFICATIONS 
-ALTER COLUMN type TYPE notification_type 
-USING type::notification_type;
 
 -- 3. TRIGGER 1: Notify student when Complaint status changes
 CREATE OR REPLACE FUNCTION notify_complaint_update()
@@ -148,7 +141,7 @@ FOR EACH ROW EXECUTE FUNCTION notify_new_event();
 CREATE OR REPLACE FUNCTION notify_new_notice()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_hall_id VARCHAR(50);
+    v_hall_id INT;
 BEGIN
     -- Find which hall the staff member who posted the notice belongs to
     SELECT hall_id INTO v_hall_id FROM STAFFS WHERE staff_id = NEW.staff_id;

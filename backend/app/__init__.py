@@ -16,13 +16,22 @@ def create_app():
     from app.student.routes import student_bp  # Adjust the import path if your routes.py is in a different folder
     app.register_blueprint(student_bp, url_prefix="/student")
 
+    from app.student.forum_routes import student_forum_bp
+    app.register_blueprint(student_forum_bp, url_prefix="/student")
+
     from app.admin.routes import admin_bp 
     app.register_blueprint(admin_bp, url_prefix='/admin')
+
+    from app.admin.forum_routes import admin_forum_bp
+    app.register_blueprint(admin_forum_bp, url_prefix='/admin')
 
     from app.auth.routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')
 
     from app.public.routes import public_bp
     app.register_blueprint(public_bp, url_prefix='/public')
+
+    from app.staff.forum_routes import staff_forum_bp
+    app.register_blueprint(staff_forum_bp, url_prefix='/staff')
     
     return app

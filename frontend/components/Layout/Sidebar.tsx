@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Home, Users, CreditCard, FileText, ShieldCheck, Grid, 
-  Calendar, Layers, LogOut, UserCircle, ClipboardList, Heart, ListTodo
+  Calendar, Layers, LogOut, UserCircle, ClipboardList, Heart, ListTodo, MessageSquare
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { UserRole } from '../../types';
@@ -23,6 +23,7 @@ const Sidebar: React.FC = () => {
       { to: '/payments', label: 'Payments', icon: CreditCard },
       { to: '/notices', label: 'Notices & Events', icon: Calendar },
       { to: '/visitors', label: 'Visitors', icon: Users },
+      { to: '/forum', label: 'Forum', icon: MessageSquare },
       { to: '/donations', label: 'Donations', icon: CreditCard },
       { to: '/complaints', label: 'Complaints', icon: FileText},
       { to: '/events', label: 'Events', icon: Calendar }
@@ -32,6 +33,7 @@ const Sidebar: React.FC = () => {
       { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/visitors', label: 'Visitors', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
+      { to: '/forum', label: 'Forum', icon: MessageSquare },
       { to: '/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/add-students', label: 'Students', icon: Users },
       { to: '/seat-applications', label: 'Seat Applications', icon: ClipboardList },
@@ -43,6 +45,7 @@ const Sidebar: React.FC = () => {
     [UserRole.PROVOST]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },
       { to: '/profile', label: 'My Profile', icon: UserCircle },
+      { to: '/forum', label: 'Forum', icon: MessageSquare },
       { to: '/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/users', label: 'Students', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },
