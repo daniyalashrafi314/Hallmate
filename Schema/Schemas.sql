@@ -247,7 +247,8 @@ CREATE TABLE NOTICE ( --18
     title        VARCHAR(150),
     description  TEXT,
     pdf_file     BYTEA,
-    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_public    BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE STUDENT_NOTICE_STATES (

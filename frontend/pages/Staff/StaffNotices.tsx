@@ -8,6 +8,7 @@ interface Notice {
   title: string;
   description: string;
   created_at: string;
+  is_public: boolean;
 }
 
 interface NoticeDetail extends Notice {
@@ -24,6 +25,7 @@ const StaffNotices: React.FC = () => {
   const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
   const [notices, setNotices] = useState<Notice[]>([]);
   const [selectedNotice, setSelectedNotice] = useState<NoticeDetail | null>(null);
+  const [createIsPublic, setCreateIsPublic] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -35,6 +37,7 @@ const StaffNotices: React.FC = () => {
   const [createDescription, setCreateDescription] = useState<string>('');
   const [createPdf, setCreatePdf] = useState<File | null>(null);
   const [creating, setCreating] = useState<boolean>(false);
+
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
@@ -249,6 +252,7 @@ const StaffNotices: React.FC = () => {
       setViewMode('list');
       setCurrentPage(1);
       setError(null);
+      setCreateIsPublic(false);
 
       // Refresh the notices list
       setTotalCount(prev => prev + 1);
@@ -359,6 +363,26 @@ const StaffNotices: React.FC = () => {
                 </div>
               </div>
 
+              {/* Public Toggle Field - NEW */}
+              <div className="pt-2">
+                <label className="flex items-center gap-4 cursor-pointer">
+                  <div className="relative">
+                    <input 
+                      type="checkbox" 
+                      checked={createIsPublic}
+                      onChange={(e) => setCreateIsPublic(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`block w-14 h-8 rounded-full transition-colors ${createIsPublic ? 'bg-blue-500' : 'bg-gray-200'}`}></div>
+                    <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform shadow-sm ${createIsPublic ? 'translate-x-6' : ''}`}></div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">Make this a Public Notice</p>
+                    <p className="text-xs text-gray-500">Public notices will be visible on the external landing page.</p>
+                  </div>
+                </label>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex gap-4 pt-6 border-t border-gray-200">
                 <button
@@ -368,6 +392,7 @@ const StaffNotices: React.FC = () => {
                     setCreateTitle('');
                     setCreateDescription('');
                     setCreatePdf(null);
+                    setCreateIsPublic(false);
                     setError(null);
                   }}
                   className="flex-1 px-6 py-3 rounded-lg border-2 border-gray-200 text-gray-800 font-bold hover:bg-gray-50 transition-colors"

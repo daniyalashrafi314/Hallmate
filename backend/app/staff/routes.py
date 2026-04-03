@@ -213,7 +213,8 @@ def get_notices():
     sql = """
         SELECT n.notice_id, 
         n.title, 
-        n.description, 
+        n.description,
+        n.is_public,
         TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at
         FROM NOTICE n
         JOIN STAFFS s ON n.staff_id = s.staff_id
@@ -234,6 +235,7 @@ def get_notice(notice_id):
         SELECT n.notice_id, 
         n.title, 
         n.description, 
+        n.is_public,
         TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at, 
         s.staff_id, s.name, 
         (n.pdf_file IS NOT NULL) AS has_pdf
@@ -277,6 +279,7 @@ def create_notice():
     title = request.form.get('title')
     description = request.form.get('description')
     pdf_file = request.files.get('pdf_file')
+    is_public = request.form.get('is_public') == 'true'
 
     pdf_bytes = None
     if pdf_file:
@@ -290,11 +293,11 @@ def create_notice():
         return jsonify({"error": "Only PDF allowed"}), 400
 
     query = """
-        INSERT INTO NOTICE (staff_id, title, description, pdf_file)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO NOTICE (staff_id, title, description, pdf_file, is_public)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING notice_id;
     """
-    values = (current_staff_id, title, description, pdf_bytes)
+    values = (current_staff_id, title, description, pdf_bytes, is_public)
     result = execute_write_query(query, values)
 
     return jsonify({"notice_id": result}), 201
@@ -593,7 +596,6 @@ def request_payment_deletion(payment_id):
     if not result:
         return jsonify({"error": "Payment not found or unauthorized"}), 404
 
-    # ← ADD THIS CHECK
     if result[0]['status'] == 'Paid':
         return jsonify({"error": "Paid payments cannot be deleted"}), 400
 
