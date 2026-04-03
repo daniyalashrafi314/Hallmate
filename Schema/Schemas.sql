@@ -1,7 +1,7 @@
 CREATE TABLE HALLS( --t1
     hall_id SERIAL PRIMARY KEY,
     name    VARCHAR(100) NOT NULL,
-    provost VARCHAR(100)
+    provost_id CHAR(10) REFERENCES STAFFS(staff_id) ON DELETE SET NULL
 );
 
 CREATE TABLE USERS(     --t2
@@ -129,7 +129,7 @@ CREATE TABLE ALLOCATIONS(--9
         REFERENCES SEATS(room_id, seat_number)
         ON DELETE CASCADE
 );
-CREATE TYPE staff_role AS ENUM ('Clerk', 'Provost', 'Guard');
+CREATE TYPE staff_role AS ENUM ('Staff', 'Provost');
 
 CREATE TABLE STAFFS( --10
     staff_id    char(10) PRIMARY KEY,
