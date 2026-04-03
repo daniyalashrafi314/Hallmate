@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../App';
-import { Users, Mail, AlertCircle, CheckCircle, User, X, Search, Filter, ChevronLeft, ChevronRight, Eye, Image as ImageIcon } from 'lucide-react';
+import { Users, Mail, AlertCircle, CheckCircle, User, X, Search, Filter, ChevronLeft, ChevronRight, Eye, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 interface FormData {
   student_id: string;
@@ -55,6 +55,7 @@ const StudentListTab: React.FC = () => {
   const [pagination, setPagination] = useState<PaginationData>({ limit: 10, offset: 0, total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -68,6 +69,9 @@ const StudentListTab: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [studentPhotoUrl, setStudentPhotoUrl] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   useEffect(() => {
     const fetchFilterOptions = async () => {
@@ -94,6 +98,7 @@ const StudentListTab: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      setWarning(null);
 
       const token = localStorage.getItem('hallmate_token');
       const headers = { 'Authorization': `Bearer ${token}` };
@@ -158,6 +163,65 @@ const StudentListTab: React.FC = () => {
     fetchStudentDetail(studentId);
   };
 
+  const handleDeleteStudent = async () => {
+    if (!selectedStudent) return;
+
+    try {
+      setDeleteLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(
+        `${API_BASE_URL}/add-students/student-list/${selectedStudent.student_id}`,
+        {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      );
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to delete student');
+      }
+
+      if (payload?.email_sent === false) {
+        setWarning(payload.message || 'Student deleted, but deletion email could not be sent.');
+      }
+
+      const shouldGoPreviousPage = students.length === 1 && pagination.offset > 0;
+      setSelectedStudent(null);
+      setStudentPhotoUrl(null);
+      setShowDeleteConfirm(false);
+      setDeleteConfirmInput('');
+
+      if (shouldGoPreviousPage) {
+        setPagination((prev) => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }));
+      } else {
+        fetchStudents();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete student');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const openDeleteConfirm = () => {
+    setDeleteConfirmInput('');
+    setShowDeleteConfirm(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (deleteLoading) return;
+    setShowDeleteConfirm(false);
+    setDeleteConfirmInput('');
+  };
+
   useEffect(() => {
     let objectUrl: string | null = null;
 
@@ -214,6 +278,18 @@ const StudentListTab: React.FC = () => {
             <span>{error}</span>
           </div>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {warning && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm font-medium flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5" />
+            <span>{warning}</span>
+          </div>
+          <button onClick={() => setWarning(null)} className="text-amber-500 hover:text-amber-700">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -503,7 +579,15 @@ const StudentListTab: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                <div className="p-6 border-t border-gray-200 flex justify-between gap-3">
+                  <button
+                    onClick={openDeleteConfirm}
+                    disabled={deleteLoading}
+                    className="inline-flex items-center gap-2 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Student
+                  </button>
                   <button
                     onClick={() => setSelectedStudent(null)}
                     className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-medium"
@@ -513,6 +597,51 @@ const StudentListTab: React.FC = () => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && selectedStudent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl w-full max-w-md border border-gray-200 shadow-xl">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Confirm Student Deletion</h3>
+              <p className="text-sm text-gray-600 mt-2">
+                This will permanently remove student <span className="font-semibold">{selectedStudent.name}</span> and related records.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                Type <span className="font-mono font-semibold">{selectedStudent.student_id}</span> to confirm.
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder="Enter student ID"
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-red-500 outline-none transition-all"
+                disabled={deleteLoading}
+              />
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={closeDeleteConfirm}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteStudent}
+                disabled={deleteLoading || deleteConfirmInput.trim() !== selectedStudent.student_id}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleteLoading ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
           </div>
         </div>
       )}

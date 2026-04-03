@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, Response
 from datetime import datetime, date
 from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
-from app.email_service import send_welcome_email
+from app.email_service import send_welcome_email, send_student_deletion_email
 from app.security.passwords import hash_password
 import re
 import secrets
@@ -923,6 +923,63 @@ def get_student_photo(student_id):
         mimetype='image/jpeg',
         headers={"Content-Disposition": f"inline; filename={student_id}_photo.jpg"}
     )
+
+
+@admin_bp.route('/add-students/student-list/<string:student_id>', methods=['DELETE'])
+@token_required(allowed_roles=['admin'])
+def delete_student(student_id):
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+
+    verify_sql = """
+        SELECT s.user_id, s.name AS student_name, u.email_address, h.name AS hall_name
+        FROM STUDENTS s
+        JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
+        WHERE s.student_id = %s
+          AND s.hall_id = %s
+    """
+    result = execute_read_query(verify_sql, (student_id, current_hall_id))
+    if not result:
+        return jsonify({"error": "Student not found in your hall"}), 404
+
+    user_id = result[0]['user_id']
+    student_name = result[0].get('student_name')
+    student_email = result[0].get('email_address')
+    hall_name = result[0].get('hall_name')
+
+    delete_sql = """
+        WITH removed_payments AS (
+            DELETE FROM PAYMENTS p
+            USING FEES f
+            WHERE p.payment_id = f.payment_id
+              AND f.student_id = %s
+        ),
+        deleted_user AS (
+            DELETE FROM USERS
+            WHERE user_id = %s
+            RETURNING user_id
+        )
+        SELECT user_id FROM deleted_user;
+    """
+    deleted_user = execute_write_query(delete_sql, (student_id, user_id), return_result=True)
+
+    if not deleted_user:
+        return jsonify({"error": "Failed to delete student"}), 500
+
+    email_sent = False
+    if student_email:
+        email_sent = send_student_deletion_email(student_email, student_id, student_name, hall_name)
+
+    message = "Student deleted successfully"
+    if not email_sent:
+        message += ". Warning: deletion email could not be sent."
+
+    return jsonify({
+        "message": message,
+        "student_id": student_id,
+        "email_sent": email_sent
+    }), 200
 
 
 
