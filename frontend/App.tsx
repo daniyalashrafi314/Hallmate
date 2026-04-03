@@ -31,11 +31,12 @@ import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 import StaffTasks from './pages/Staff/StaffTasks';
 import StaffDashboard from './pages/Staff/StaffDashboard';
+import ProvostProfile from './pages/Provost/ProvostProfile';
 import StaffEvents from './pages/Staff/StaffEvents';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
-import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
+import ProvostStudentManagement from './pages/Provost/ProvostStudentManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
 import ProvostTasks from './pages/Provost/ProvostTasks';
 import ProvostDashboard from './pages/Provost/ProvostDashboard';
@@ -176,12 +177,21 @@ const App: React.FC = () => {
                                 : <Navigate to="/dashboard" replace />
                           }
                         />
-                        <Route path="/profile" element={userRole === UserRole.STUDENT ? <StudentProfile /> : <StaffProfile />} />
+                        <Route
+                          path="/profile"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentProfile />
+                              : userRole === UserRole.STAFF
+                                ? <StaffProfile />
+                                : <ProvostProfile />
+                          }
+                        />
                         <Route path="/notices-manage" element={<StaffNotices />} />
 
                         {/* Provost Routes */}
                         <Route path="/rooms" element={<ProvostRooms />} />
-                        <Route path="/users" element={<ProvostUserManagement />} />
+                        <Route path="/users" element={<ProvostStudentManagement />} />
                         <Route path="/approvals" element={<ProvostSeatApprovals />} />
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
