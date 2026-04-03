@@ -32,7 +32,7 @@ const Sidebar: React.FC = () => {
       { to: '/visitors', label: 'Visitors', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
       { to: '/tasks', label: 'Tasks', icon: ListTodo },
-      { to: '/add-students', label: 'Add Students', icon: Users },
+      { to: '/add-students', label: 'Students', icon: Users },
       { to: '/seat-applications', label: 'Seat Applications', icon: ClipboardList },
       { to: '/salary', label: 'Salary', icon: CreditCard },
       { to: '/add-payments', label: 'Add Payments', icon: CreditCard },

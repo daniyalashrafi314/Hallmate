@@ -1058,6 +1058,137 @@ def update_application_priority(app_id):
 
 # --- 8) STUDENT LIST & SEARCH ---
 
+# --- STUDENT LIST (sub-page on add-students) ---
+
+@staff_bp.route('/add-students/student-list', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_student_list():
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    try:
+        limit  = min(int(request.args.get('limit', 10)), 50)
+        offset = int(request.args.get('offset', 0))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+    search        = request.args.get('search', None)
+    status_filter = request.args.get('status', None)   # 'ATTACHED' | 'RESIDENT'
+    batch_filter  = request.args.get('batch',  None)   # e.g. '23'
+    room_filter   = request.args.get('room',   None)   # e.g. '101'
+
+    VALID_STATUSES = {'ATTACHED', 'RESIDENT'}
+    if status_filter and status_filter not in VALID_STATUSES:
+        return jsonify({"error": f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}"}), 400
+
+    base = """
+        FROM STUDENTS s
+        LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.hall_id = %s
+    """
+    params = [current_hall_id]
+
+    if status_filter:
+        base += " AND s.status = %s"
+        params.append(status_filter)
+    if batch_filter:
+        base += " AND SUBSTR(s.student_id, 1, 2) = %s"
+        params.append(batch_filter)
+    if room_filter:
+        base += " AND a.room_id = %s"
+        params.append(room_filter)
+    if search:
+        base += " AND (s.name ILIKE %s OR s.student_id LIKE %s)"
+        params += [f"%{search}%", f"%{search}%"]
+
+    count_params = list(params)
+
+    sql = f"""
+        SELECT
+            s.student_id,
+            s.name,
+            s.status,
+            a.room_id,
+            (s.photo IS NOT NULL) AS has_photo
+        {base}
+        ORDER BY s.student_id ASC
+        LIMIT %s OFFSET %s
+    """
+    params += [limit, offset]
+    students = execute_read_query(sql, tuple(params))
+
+    count_sql = f"SELECT COUNT(*) AS total {base}"
+    total_row = execute_read_query(count_sql, tuple(count_params))
+    total     = total_row[0]['total'] if total_row else 0
+
+    return jsonify({
+        "data": students,
+        "pagination": {"limit": limit, "offset": offset, "total": total}
+    }), 200
+
+
+@staff_bp.route('/add-students/student-list/<string:student_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_student_detail(student_id):
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    sql = """
+        SELECT
+            s.student_id,
+            s.name,
+            s.phone_number,
+            s.status,
+            u.email_address,
+            h.name              AS hall_name,
+            h.hall_id,
+            a.room_id,
+            a.seat_number,
+            a.start_date        AS allocation_start_date,
+            (s.photo IS NOT NULL) AS has_photo,
+            get_department_name(s.student_id) AS department,
+            get_batch_year(s.student_id)      AS batch_year
+        FROM STUDENTS s
+        JOIN USERS    u  ON s.user_id   = u.user_id
+        JOIN HALLS    h  ON s.hall_id   = h.hall_id
+        LEFT JOIN ALLOCATIONS a
+               ON s.student_id = a.student_id AND a.end_date IS NULL
+        WHERE s.student_id = %s
+          AND s.hall_id    = %s
+    """
+    result = execute_read_query(sql, (student_id, current_hall_id))
+
+    if not result:
+        return jsonify({"error": "Student not found or unauthorized"}), 404
+
+    return jsonify(result[0]), 200
+
+
+@staff_bp.route('/add-students/student-list/<string:student_id>/photo', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_student_photo(student_id):
+    current_staff_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_staff_id)
+
+    sql = """
+        SELECT s.photo
+        FROM STUDENTS s
+        WHERE s.student_id = %s
+          AND s.hall_id    = %s
+    """
+    result = execute_read_query(sql, (student_id, current_hall_id))
+
+    if not result or not result[0].get('photo'):
+        return jsonify({"error": "No photo found"}), 404
+
+    return Response(
+        result[0]['photo'],
+        mimetype='image/jpeg',
+        headers={"Content-Disposition": f"inline; filename={student_id}_photo.jpg"}
+    )
+
+
+
 @staff_bp.route('/add-students', methods=['POST'])
 @token_required(allowed_roles=['staff'])
 def add_student():
