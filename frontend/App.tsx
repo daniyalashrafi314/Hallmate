@@ -18,6 +18,7 @@ import StudentNotices from './pages/Student/StudentNotices';
 import StudentDonations from './pages/Student/StudentDonations';
 import StudentComplaints from './pages/Student/StudentComplaints';
 import StudentProfile from './pages/Student/StudentProfile';
+import StudentEvents from './pages/Student/StudentEvents'
 
 // Staff Pages
 import StaffVisitors from './pages/Staff/StaffVisitors';
@@ -30,6 +31,7 @@ import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 import StaffTasks from './pages/Staff/StaffTasks';
 import StaffDashboard from './pages/Staff/StaffDashboard';
+import StaffEvents from './pages/Staff/StaffEvents';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
@@ -146,6 +148,7 @@ const App: React.FC = () => {
                         <Route path="/notices" element={<StudentNotices />} />
                         <Route path="/donations" element={userRole === UserRole.STUDENT ? <StudentDonations /> : <StaffDonations />} />
                         <Route path="/complaints" element={<StudentComplaints />} />
+                        <Route path="/events" element={userRole === UserRole.STUDENT ? <StudentEvents /> : <StaffEvents />} />
 
                         {/* Staff Routes */}
                         <Route path="/add-payments" element={<StaffAddPayments />} />

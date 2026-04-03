@@ -245,10 +245,19 @@ CREATE TABLE EVENTS( --17
     description TEXT,
     date        DATE,
     hall_id     INT,
+    video_link TEXT,
+    is_public BOOLEAN DEFAULT FALSE,
     FOREIGN KEY(hall_id)
         REFERENCES HALLS(hall_id)
         ON DELETE CASCADE
 );
+
+CREATE TABLE STUDENT_HIDDEN_EVENTS (
+    student_id VARCHAR(50) REFERENCES STUDENTS(student_id) ON DELETE CASCADE,
+    event_id INT REFERENCES EVENTS(event_id) ON DELETE CASCADE,
+    PRIMARY KEY (student_id, event_id)
+);
+
 
 CREATE TABLE NOTICE ( --18
     notice_id    SERIAL PRIMARY KEY,
@@ -284,7 +293,7 @@ CREATE TABLE TASKS (
     FOREIGN KEY (provost_id) 
         REFERENCES STAFFS(staff_id) 
         ON DELETE CASCADE
-); -- Removed the extra comma here
+);
 
 CREATE TABLE task_assignments (
     assignment_id SERIAL PRIMARY KEY,
@@ -298,7 +307,7 @@ CREATE TABLE task_assignments (
     FOREIGN KEY (staff_id) 
         REFERENCES STAFFS(staff_id) 
         ON DELETE CASCADE,
-    -- Prevents duplicate assignments
+        
     UNIQUE (task_id, staff_id) 
 );
 

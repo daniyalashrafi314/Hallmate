@@ -24,7 +24,8 @@ const Sidebar: React.FC = () => {
       { to: '/notices', label: 'Notices & Events', icon: Calendar },
       { to: '/visitors', label: 'Visitors', icon: Users },
       { to: '/donations', label: 'Donations', icon: CreditCard },
-      { to: '/complaints', label: 'Complaints', icon: FileText}
+      { to: '/complaints', label: 'Complaints', icon: FileText},
+      { to: '/events', label: 'Events', icon: Calendar }
     ],
     [UserRole.STAFF]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -37,6 +38,7 @@ const Sidebar: React.FC = () => {
       { to: '/salary', label: 'Salary', icon: CreditCard },
       { to: '/add-payments', label: 'Add Payments', icon: CreditCard },
       { to: '/donations', label: 'Donations', icon: Heart },
+      { to: '/events', label: 'Events', icon: Calendar }
     ],
     [UserRole.PROVOST]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },

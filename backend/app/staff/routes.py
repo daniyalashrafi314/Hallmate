@@ -1688,3 +1688,28 @@ def update_task_status(task_id):
         
     return jsonify({"error": "Failed to update task status"}), 500
 
+
+
+# --- EVENTS ----
+
+
+@staff_bp.route('/events', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_staff_events():
+    current_staff_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_staff_id)
+    
+    sql = """
+        SELECT
+            e.event_id AS id,
+            e.name,
+            e.description,
+            TO_CHAR(e.date, 'YYYY-MM-DD') AS date,
+            e.video_link,
+            e.is_public
+        FROM EVENTS e
+        WHERE e.hall_id = %s
+        ORDER BY e.date DESC
+    """
+    events = execute_read_query(sql, (current_hall_id,))
+    return jsonify(events or [])

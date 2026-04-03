@@ -744,3 +744,57 @@ def cancel_application():
     if success:
         return jsonify({"message": "Application cleared"}), 200
     return jsonify({"error": "Could not clear application"}), 400
+
+
+
+# --- 8) EVENTS ---
+
+@student_bp.route('/events', methods=['GET'])
+@token_required(allowed_roles=['student'])
+def get_student_events():
+    current_student_id = request.current_user_id
+    
+    # First, get the student's hall_id to show intra-hall events
+    hall_query = "SELECT hall_id FROM STUDENTS WHERE student_id = %s"
+    hall_res = execute_read_query(hall_query, (current_student_id,))
+    
+    if not hall_res:
+        return jsonify({"error": "Student not found"}), 404
+        
+    student_hall_id = hall_res[0]['hall_id']
+
+    # Fetch events that are public OR belong to the student's hall, 
+    # EXCLUDING the ones they have hidden.
+    sql = """
+        SELECT 
+            e.event_id as id, 
+            e.name, 
+            e.description, 
+            TO_CHAR(e.date, 'YYYY-MM-DD') as date, 
+            e.video_link, 
+            e.is_public
+        FROM EVENTS e
+        WHERE (e.hall_id = %s OR e.is_public = TRUE)
+          AND e.event_id NOT IN (
+              SELECT event_id FROM STUDENT_HIDDEN_EVENTS WHERE student_id = %s
+          )
+        ORDER BY e.date DESC
+    """
+    events = execute_read_query(sql, (student_hall_id, current_student_id))
+    
+    return jsonify(events if events else []), 200
+
+@student_bp.route('/events/<int:event_id>/hide', methods=['POST'])
+@token_required(allowed_roles=['student'])
+def hide_event(event_id):
+    current_student_id = request.current_user_id
+    
+    # Insert into the tracking table (ON CONFLICT DO NOTHING prevents errors if they click twice)
+    sql = """
+        INSERT INTO STUDENT_HIDDEN_EVENTS (student_id, event_id) 
+        VALUES (%s, %s) 
+        ON CONFLICT DO NOTHING
+    """
+    execute_write_query(sql, (current_student_id, event_id))
+    
+    return jsonify({"message": "Event hidden successfully"}), 200
