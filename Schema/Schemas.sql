@@ -52,7 +52,7 @@ CREATE TABLE VISITORS( --4
 
 CREATE TYPE c_type AS ENUM('Room', 'Dining', 'Toilet', 'Roommate','Staff', 'Facilities', 'Other'); --complaint on
 
-CREATE TYPE complaint_status AS ENUM('Pending', 'Approved', 'Refused');
+CREATE TYPE complaint_status AS ENUM('Pending', 'Resolved', 'Dismissed');
 
 CREATE TABLE COMPLAINTS ( --5
     complaint_id   SERIAL PRIMARY KEY,
@@ -60,11 +60,20 @@ CREATE TABLE COMPLAINTS ( --5
     complaint_type           c_type NOT NULL,        --OR USE AN ENUM
     description    TEXT,
     status         complaint_status DEFAULT 'Pending', --CAN ALSO BE AN ENUM
+    is_anonymous   BOOLEAN DEFAULT FALSE,
+    is_public      BOOLEAN DEFAULT FALSE,
     date           DATE DEFAULT CURRENT_DATE,
     FOREIGN KEY (student_id) 
         REFERENCES STUDENTS(student_id)
         on DELETE CASCADE 
 );
+
+CREATE TABLE COMPLAINT_UPVOTES (
+    complaint_id INT REFERENCES COMPLAINTS(complaint_id) ON DELETE CASCADE,
+    student_id VARCHAR(50) REFERENCES STUDENTS(student_id) ON DELETE CASCADE,
+    PRIMARY KEY (complaint_id, student_id)
+);
+
 CREATE TYPE application_status AS ENUM ('Pending', 'Approved', 'Refused');
 
 

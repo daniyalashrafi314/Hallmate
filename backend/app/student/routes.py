@@ -569,18 +569,54 @@ def clear_visitors():
 
 # --- 6) COMPLAINTS ---
 
+# --- 6) COMPLAINTS ---
+
 @student_bp.route('/complaints', methods=['GET'])
 @token_required(allowed_roles=['student'])
 def get_complaints():
     current_student_id = request.current_user_id
-    sql = """
-        SELECT complaint_id as id, complaint_type as type, description, 
-               status, TO_CHAR(date, 'YYYY-MM-DD') as date, is_anonymous
-        FROM COMPLAINTS 
-        WHERE student_id = %s 
-        ORDER BY complaint_id DESC
-    """
-    complaints = execute_read_query(sql, (current_student_id,))
+    view = request.args.get('view', 'mine')
+
+    if view == 'public':
+        # Public Board: Return all public complaints. Mask identity strictly at the database level.
+        sql = """
+            SELECT 
+                c.complaint_id as id, 
+                c.complaint_type as type, 
+                c.description, 
+                c.status, 
+                TO_CHAR(c.date, 'YYYY-MM-DD') as date, 
+                c.is_anonymous,
+                CASE 
+                    WHEN c.is_anonymous THEN 'Anonymous Resident' 
+                    ELSE s.name 
+                END as author_name,
+                (SELECT COUNT(*) FROM COMPLAINT_UPVOTES cu WHERE cu.complaint_id = c.complaint_id) as upvotes,
+                EXISTS(SELECT 1 FROM COMPLAINT_UPVOTES cu WHERE cu.complaint_id = c.complaint_id AND cu.student_id = %s) as has_upvoted
+            FROM COMPLAINTS c
+            LEFT JOIN STUDENTS s ON c.student_id = s.student_id
+            WHERE c.is_public = TRUE
+            ORDER BY upvotes DESC, c.date DESC
+        """
+        complaints = execute_read_query(sql, (current_student_id,))
+    else:
+        # My Complaints: Return only the user's complaints (public and private).
+        sql = """
+            SELECT 
+                c.complaint_id as id, 
+                c.complaint_type as type, 
+                c.description, 
+                c.status, 
+                TO_CHAR(c.date, 'YYYY-MM-DD') as date, 
+                c.is_anonymous,
+                c.is_public,
+                (SELECT COUNT(*) FROM COMPLAINT_UPVOTES cu WHERE cu.complaint_id = c.complaint_id) as upvotes
+            FROM COMPLAINTS c
+            WHERE c.student_id = %s 
+            ORDER BY c.date DESC
+        """
+        complaints = execute_read_query(sql, (current_student_id,))
+        
     return jsonify(complaints if complaints else []), 200
 
 @student_bp.route('/complaints', methods=['POST'])
@@ -588,18 +624,20 @@ def get_complaints():
 def add_complaint():
     current_student_id = request.current_user_id
     data = request.get_json()
+    
     c_type = data.get('type')
     desc = data.get('description')
     is_anon = data.get('is_anonymous', False)
+    is_public = data.get('is_public', False)
     
     if not c_type or not desc:
         return jsonify({"error": "Type and description are required"}), 400
         
     sql = """
-        INSERT INTO COMPLAINTS (student_id, complaint_type, description, is_anonymous) 
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO COMPLAINTS (student_id, complaint_type, description, is_anonymous, is_public) 
+        VALUES (%s, %s, %s, %s, %s)
     """
-    success = execute_write_query(sql, (current_student_id, c_type, desc, is_anon))
+    success = execute_write_query(sql, (current_student_id, c_type, desc, is_anon, is_public))
     
     if success:
         return jsonify({"message": "Complaint filed successfully"}), 201
@@ -616,7 +654,21 @@ def remove_complaint(complaint_id):
         return jsonify({"message": "Complaint removed"}), 200
     return jsonify({"error": "Cannot delete this complaint (it may already be processed)"}), 400
 
-
+@student_bp.route('/complaints/<int:complaint_id>/upvote', methods=['POST'])
+@token_required(allowed_roles=['student'])
+def toggle_upvote(complaint_id):
+    current_student_id = request.current_user_id
+    
+    # Check if vote exists
+    check_sql = "SELECT 1 FROM COMPLAINT_UPVOTES WHERE complaint_id = %s AND student_id = %s"
+    existing = execute_read_query(check_sql, (complaint_id, current_student_id))
+    
+    if existing:
+        execute_write_query("DELETE FROM COMPLAINT_UPVOTES WHERE complaint_id = %s AND student_id = %s", (complaint_id, current_student_id))
+        return jsonify({"message": "Upvote removed", "has_upvoted": False}), 200
+    else:
+        execute_write_query("INSERT INTO COMPLAINT_UPVOTES (complaint_id, student_id) VALUES (%s, %s)", (complaint_id, current_student_id))
+        return jsonify({"message": "Upvoted successfully", "has_upvoted": True}), 201
 
 # --- 7) SEAT APPLICATION ---
 
