@@ -1,8 +1,9 @@
 
 import React from 'react';
-import { Bell, Search, Menu } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { format } from 'date-fns';
+import NotificationBell from './NotificationBell';
 
 const Header: React.FC = () => {
   const { theme } = useAppContext();
@@ -20,10 +21,8 @@ const Header: React.FC = () => {
           </p>
         </div>
 
-        <div className="relative cursor-pointer hover:bg-gray-100 p-2 rounded-full transition-colors">
-          <Bell className="w-5 h-5 text-gray-600" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-        </div>
+        <NotificationBell/>
+        
       </div>
     </header>
   );

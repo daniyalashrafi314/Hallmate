@@ -88,6 +88,222 @@ FOR EACH ROW
 EXECUTE FUNCTION handle_seat_allocation();
 
 
+-- 1. Create the ENUM type
+CREATE TYPE notification_type AS ENUM ('DONATION', 'EVENT', 'NOTICE', 'PAYMENT', 'COMPLAINT', 'SEAT_APPLICATION');
 
+-- 2. Update the NOTIFICATIONS table to use the ENUM
+-- (The USING clause safely casts any existing string data to the new enum format)
+ALTER TABLE NOTIFICATIONS 
+ALTER COLUMN type TYPE notification_type 
+USING type::notification_type;
 
+-- 3. TRIGGER 1: Notify student when Complaint status changes
+CREATE OR REPLACE FUNCTION notify_complaint_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only trigger if the status changed to Resolved or Dismissed
+    IF NEW.status IN ('Resolved', 'Dismissed') AND OLD.status != NEW.status THEN
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        VALUES (
+            NEW.student_id, 
+            'Complaint ' || NEW.status, 
+            'Your complaint regarding ' || NEW.complaint_type || ' has been marked as ' || NEW.status || '.', 
+            'COMPLAINT', 
+            '/student/complaints'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
+CREATE TRIGGER trigger_complaint_update
+AFTER UPDATE ON COMPLAINTS
+FOR EACH ROW EXECUTE FUNCTION notify_complaint_update();
+
+-- 4. TRIGGER 2: Fan-out notification when a new Event is created
+CREATE OR REPLACE FUNCTION notify_new_event()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_public THEN
+        -- Insert for EVERY student in the database
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        SELECT student_id, 'New Inter-Hall Event', NEW.name, 'EVENT', '/student/events'
+        FROM STUDENTS;
+    ELSE
+        -- Insert ONLY for students in the same hall
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        SELECT student_id, 'New Hall Event', NEW.name, 'EVENT', '/student/events'
+        FROM STUDENTS
+        WHERE hall_id = NEW.hall_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_new_event
+AFTER INSERT ON EVENTS
+FOR EACH ROW EXECUTE FUNCTION notify_new_event();
+
+-- 5. TRIGGER 3: Fan-out notification when a new Notice is posted
+CREATE OR REPLACE FUNCTION notify_new_notice()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_hall_id VARCHAR(50);
+BEGIN
+    -- Find which hall the staff member who posted the notice belongs to
+    SELECT hall_id INTO v_hall_id FROM STAFFS WHERE staff_id = NEW.staff_id;
+
+    IF NEW.is_public THEN
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        SELECT student_id, 'New Public Notice', NEW.title, 'NOTICE', '/student/notices'
+        FROM STUDENTS;
+    ELSE
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        SELECT student_id, 'New Hall Notice', NEW.title, 'NOTICE', '/student/notices'
+        FROM STUDENTS
+        WHERE hall_id = v_hall_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_new_notice
+AFTER INSERT ON NOTICE
+FOR EACH ROW EXECUTE FUNCTION notify_new_notice();
+
+CREATE OR REPLACE FUNCTION notify_seat_application_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Updated to match your schema's 'Refused'
+    IF NEW.status IN ('Approved', 'Refused') AND OLD.status != NEW.status THEN
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        VALUES (
+            NEW.student_id, 
+            'Seat Application ' || NEW.status, 
+            'Your application for a hall seat has been ' || LOWER(NEW.status) || '.', 
+            'SEAT APPLICATION', -- Updated to match your ENUM spacing
+            '/student/profile'
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_seat_application_update
+AFTER UPDATE ON SEAT_APPLICATION
+FOR EACH ROW EXECUTE FUNCTION notify_seat_application_update();
+
+CREATE OR REPLACE FUNCTION notify_donation_approved()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_student_id CHAR(7);
+BEGIN
+    IF NEW.status = 'Approved' AND OLD.status != 'Approved' THEN
+        -- Find out which student asked for this donation
+        SELECT student_id INTO v_student_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
+
+        -- Only notify if a student asked for it (ignores staff-requested donations)
+        IF v_student_id IS NOT NULL THEN
+            INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+            VALUES (
+                v_student_id, 
+                'Donation Request Approved', 
+                'Your donation request has been approved and is now live.', 
+                'DONATION', 
+                '/student/donations'
+            );
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_donation_approved
+AFTER UPDATE ON DONATIONS
+FOR EACH ROW EXECUTE FUNCTION notify_donation_approved();
+
+CREATE OR REPLACE FUNCTION notify_donation_pledge()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_receiver_id CHAR(7);
+    v_amount NUMERIC(12,2);
+BEGIN
+    -- Find who created the donation
+    SELECT student_id INTO v_receiver_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
+    
+    -- Find the amount from the PAYMENTS table
+    SELECT amount INTO v_amount FROM PAYMENTS WHERE payment_id = NEW.payment_id;
+
+    IF v_receiver_id IS NOT NULL THEN
+        INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+        VALUES (
+            v_receiver_id, 
+            'New Donation Pledge!', 
+            'Someone has pledged ৳' || v_amount || ' towards your request.', 
+            'DONATION', 
+            '/student/donations'
+        );
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_donation_pledge
+AFTER INSERT ON GENERATES
+FOR EACH ROW EXECUTE FUNCTION notify_donation_pledge();
+
+CREATE OR REPLACE FUNCTION notify_new_payment()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_amount NUMERIC(12,2);
+    v_type VARCHAR(20);
+    v_due TIMESTAMP;
+BEGIN
+    -- Fetch the payment details from the PAYMENTS table
+    SELECT amount, payment_type, due_time INTO v_amount, v_type, v_due 
+    FROM PAYMENTS WHERE payment_id = NEW.payment_id;
+
+    INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+    VALUES (
+        NEW.student_id, 
+        'New Payment Due', 
+        'A new fee of ৳' || v_amount || ' for ' || COALESCE(v_type, 'fees') || ' has been posted. Due by ' || TO_CHAR(v_due, 'YYYY-MM-DD') || '.', 
+        'PAYMENT', 
+        '/student/payments'
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_new_payment
+AFTER INSERT ON FEES
+FOR EACH ROW EXECUTE FUNCTION notify_new_payment();
+
+CREATE OR REPLACE FUNCTION notify_overdue_payment()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_student_id CHAR(7);
+BEGIN
+    IF NEW.status = 'Overdue' AND OLD.status != 'Overdue' THEN
+        -- Find the student associated with this payment
+        SELECT student_id INTO v_student_id FROM FEES WHERE payment_id = NEW.payment_id;
+
+        IF v_student_id IS NOT NULL THEN
+            INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
+            VALUES (
+                v_student_id, 
+                'Payment Overdue Alert', 
+                'Your payment of ৳' || NEW.amount || ' for ' || COALESCE(NEW.payment_type, 'fees') || ' is now overdue. Please clear it immediately.', 
+                'PAYMENT', 
+                '/student/payments'
+            );
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_overdue_payment
+AFTER UPDATE ON PAYMENTS
+FOR EACH ROW EXECUTE FUNCTION notify_overdue_payment();

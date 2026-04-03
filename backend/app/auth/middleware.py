@@ -1,24 +1,39 @@
 import jwt
 from functools import wraps
 from flask import request, jsonify
+from app.db import execute_read_query
 
 SECRET_KEY = "super_secret_hallmate_key_123"
 
 def determine_role(user_id):
-    """Helper function to determine role based on your ID structure rules"""
+    """Helper function to determine role based on database records"""
     user_id = str(user_id).strip()
     
-    # Example: If it's exactly 7 digits, it's a student
+    # 1. Check if Student (still rule-based for speed)
     if len(user_id) == 7 and user_id.isdigit():
         return 'student'
-    # Example: If it starts with 'adm', it's an admin/provost
-    elif user_id.lower().startswith('adm'):
-        return 'admin'
-    # Example: If it starts with 'stf', it's staff
-    elif user_id.lower().startswith('stf'):
-        return 'staff'
-    else:
-        return 'unknown'
+    
+    # 2. Check if Staff or Provost (Database Lookup)
+    # Note: We look up by the user_id foreign key in the STAFFS table
+    staff_query = "SELECT role FROM STAFFS WHERE user_id = %s"
+    staff_record = execute_read_query(staff_query, (user_id,))
+    
+    if staff_record:
+        # Assuming execute_read_query returns a list of dicts: [{'role': 'Provost'}]
+        staff_role = staff_record[0].get('role')
+        if staff_role == 'Provost':
+            return 'admin' # (or 'admin', whichever you prefer to call it in backend)
+        else:
+            return 'staff'
+            
+    # 3. Check if Super Admin (Exists in USERS, but wasn't caught by Student or Staff checks)
+    user_query = "SELECT user_id FROM USERS WHERE user_id = %s"
+    user_record = execute_read_query(user_query, (user_id,))
+    
+    if user_record:
+        return 'super_admin'
+        
+    return 'unknown'
 
 def token_required(allowed_roles=None):
     """

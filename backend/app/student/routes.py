@@ -787,6 +787,7 @@ def get_student_events():
 @student_bp.route('/events/<int:event_id>/hide', methods=['POST'])
 @token_required(allowed_roles=['student'])
 def hide_event(event_id):
+
     current_student_id = request.current_user_id
     
     # Insert into the tracking table (ON CONFLICT DO NOTHING prevents errors if they click twice)
@@ -798,3 +799,52 @@ def hide_event(event_id):
     execute_write_query(sql, (current_student_id, event_id))
     
     return jsonify({"message": "Event hidden successfully"}), 200
+
+
+
+# --- NOTIFICATIONS
+
+# --- NOTIFICATIONS ROUTES ---
+
+@student_bp.route('/notifications', methods=['GET'])
+@token_required(allowed_roles=['student'])
+def get_notifications():
+    current_student_id = request.current_user_id
+    
+    # Fetch the latest 50 notifications
+    sql = """
+        SELECT 
+            notification_id as id, 
+            title, 
+            message, 
+            type, 
+            target_url, 
+            is_read, 
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') as created_at
+        FROM NOTIFICATIONS
+        WHERE student_id = %s
+        ORDER BY created_at DESC
+        LIMIT 50
+    """
+    notifications = execute_read_query(sql, (current_student_id,))
+    return jsonify(notifications if notifications else []), 200
+
+@student_bp.route('/notifications/<int:notification_id>/read', methods=['PUT'])
+@token_required(allowed_roles=['student'])
+def mark_notification_read(notification_id):
+    current_student_id = request.current_user_id
+    
+    sql = "UPDATE NOTIFICATIONS SET is_read = TRUE WHERE notification_id = %s AND student_id = %s"
+    execute_write_query(sql, (notification_id, current_student_id))
+    
+    return jsonify({"message": "Marked as read"}), 200
+
+@student_bp.route('/notifications/read-all', methods=['PUT'])
+@token_required(allowed_roles=['student'])
+def mark_all_notifications_read():
+    current_student_id = request.current_user_id
+    
+    sql = "UPDATE NOTIFICATIONS SET is_read = TRUE WHERE student_id = %s AND is_read = FALSE"
+    execute_write_query(sql, (current_student_id,))
+    
+    return jsonify({"message": "All marked as read"}), 200
