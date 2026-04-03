@@ -6,6 +6,7 @@ import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 
 // Auth Pages (You will create these next)
+import LandingPage from './pages/Login/LandingPage'
 import Login from './pages/Login/Login'
 
 // Student Pages
@@ -112,6 +113,7 @@ const App: React.FC = () => {
       <HashRouter>
         <Routes>
           {/* --- PUBLIC ROUTES --- */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={userRole ? <Navigate to="/dashboard" replace /> : <Login />} />
           
           {/* --- PROTECTED APP LAYOUT --- */}

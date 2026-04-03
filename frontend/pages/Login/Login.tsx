@@ -121,6 +121,13 @@ const Login: React.FC = () => {
                 <>Sign In <ArrowRight className="w-5 h-5" /></>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all mt-4 bg-gray-600 hover:bg-gray-700 hover:shadow-lg hover:-translate-y-0.5"
+            >
+              Back to Home
+            </button>
           </form>
 
         </div>

@@ -50,7 +50,7 @@ const Sidebar: React.FC = () => {
   // 2. The actual logout handler
   const handleSignOut = () => {
     logout(); // Clears context and localStorage
-    navigate('/login'); // Sends them to login screen
+    navigate('/'); // Sends them to login screen
   };
 
   return (

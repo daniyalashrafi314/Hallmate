@@ -1,22 +1,3 @@
-
-import React from 'react';
-import { 
-  Home, 
-  Users, 
-  CreditCard, 
-  Settings, 
-  FileText, 
-  UserPlus, 
-  Megaphone, 
-  Calendar,
-  Grid,
-  Bell,
-  LogOut,
-  ChevronRight,
-  ShieldCheck,
-  AlertCircle
-} from 'lucide-react';
-
 export const THEME_CONFIG = {
   STUDENT: {
     primary: 'bg-[#780000]',

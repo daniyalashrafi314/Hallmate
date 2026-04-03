@@ -310,7 +310,7 @@ const StudentProfile: React.FC = () => {
         {/* Left Column: Photo & Quick Identity */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className={`h-24 ${theme.primary} opacity-20`}></div>
+            <div className={`h-24 ${theme.primary}`}></div>
             <div className="px-6 pb-6 relative text-center">
               
               {/* Photo Area */}
