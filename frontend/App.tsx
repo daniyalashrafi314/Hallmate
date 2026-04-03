@@ -33,7 +33,7 @@ import StaffDashboard from './pages/Staff/StaffDashboard';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
-import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
+import ProvostStudentManagement from './pages/Provost/ProvostStudentManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
 import ProvostTasks from './pages/Provost/ProvostTasks';
 import ProvostDashboard from './pages/Provost/ProvostDashboard';
@@ -178,7 +178,7 @@ const App: React.FC = () => {
 
                         {/* Provost Routes */}
                         <Route path="/rooms" element={<ProvostRooms />} />
-                        <Route path="/users" element={<ProvostUserManagement />} />
+                        <Route path="/users" element={<ProvostStudentManagement />} />
                         <Route path="/approvals" element={<ProvostSeatApprovals />} />
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
