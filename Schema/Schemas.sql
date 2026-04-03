@@ -26,7 +26,7 @@ CREATE TABLE STUDENTS --3
         REFERENCES HALLS(hall_id)
         ON DELETE CASCADE,
     FOREIGN KEY (user_id)
-        REFERENCES USERS(user_id)
+        REFERENCES USERS(user_id) ON DELETE CASCADE
         
 );
 
@@ -144,7 +144,7 @@ CREATE TABLE STAFFS( --10
         REFERENCES HALLS(hall_id)
         ON DELETE CASCADE,
     FOREIGN KEY(user_id)
-        REFERENCES USERS(user_id)
+        REFERENCES USERS(user_id) ON DELETE CASCADE
     
 );
 
@@ -171,8 +171,8 @@ CREATE TABLE PAYMENT_DELETE_REQUESTS (
     reviewed_by   CHAR(10) DEFAULT NULL,
     reviewed_at   TIMESTAMP DEFAULT NULL,
     FOREIGN KEY (payment_id)   REFERENCES PAYMENTS(payment_id) ON DELETE CASCADE,
-    FOREIGN KEY (requested_by) REFERENCES STAFFS(staff_id),
-    FOREIGN KEY (reviewed_by)  REFERENCES STAFFS(staff_id),
+    FOREIGN KEY (requested_by) REFERENCES STAFFS(staff_id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by)  REFERENCES STAFFS(staff_id) ON DELETE CASCAD,
     UNIQUE (payment_id)
 );
 
@@ -219,6 +219,7 @@ CREATE TABLE GENERATES( --15
         ON DELETE CASCADE,
     FOREIGN KEY (donation_id)
         REFERENCES DONATIONS(donation_id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE ASKS_FOR(
@@ -227,9 +228,8 @@ CREATE TABLE ASKS_FOR(
     staff_id CHAR(10),
     PRIMARY KEY(donation_id),
     FOREIGN KEY(donation_id) REFERENCES DONATIONS(donation_id) ON DELETE CASCADE,
-    FOREIGN KEY(student_id) REFERENCES STUDENTS(student_id),
-    FOREIGN KEY(staff_id) REFERENCES STAFFS(staff_id)
-
+    FOREIGN KEY(student_id) REFERENCES STUDENTS(student_id) ON DELETE CASCADE,
+    FOREIGN KEY(staff_id) REFERENCES STAFFS(staff_id) ON DELETE CASCADE
     CONSTRAINT at_least_one_requester CHECK (
         (student_id IS NOT NULL) OR (staff_id IS NOT NULL)
     )
@@ -252,7 +252,7 @@ CREATE TABLE EVENTS( --17
 
 CREATE TABLE NOTICE ( --18
     notice_id    SERIAL PRIMARY KEY,
-    staff_id     CHAR(10) NOT NULL REFERENCES STAFFS(staff_id),
+    staff_id     CHAR(10) NOT NULL REFERENCES STAFFS(staff_id) ON DELETE SET NULL,
     title        VARCHAR(150),
     description  TEXT,
     pdf_file     BYTEA,
@@ -301,3 +301,50 @@ CREATE TABLE task_assignments (
     -- Prevents duplicate assignments
     UNIQUE (task_id, staff_id) 
 );
+
+-- Update STUDENTS -> USERS DONE
+ALTER TABLE STUDENTS
+    DROP CONSTRAINT students_user_id_fkey,
+    ADD CONSTRAINT students_user_id_fkey 
+        FOREIGN KEY (user_id) REFERENCES USERS(user_id) ON DELETE CASCADE;
+
+-- Update STAFFS -> USERS DONE
+ALTER TABLE STAFFS
+    DROP CONSTRAINT staffs_user_id_fkey,
+    ADD CONSTRAINT staffs_user_id_fkey 
+        FOREIGN KEY (user_id) REFERENCES USERS(user_id) ON DELETE CASCADE;
+
+-- Update GENERATES -> DONATIONS    DONE
+ALTER TABLE GENERATES
+    DROP CONSTRAINT generates_donation_id_fkey,
+    ADD CONSTRAINT generates_donation_id_fkey 
+        FOREIGN KEY (donation_id) REFERENCES DONATIONS(donation_id) ON DELETE CASCADE;
+
+-- Update ASKS_FOR -> STUDENTS DONE
+ALTER TABLE ASKS_FOR
+    DROP CONSTRAINT asks_for_student_id_fkey,
+    ADD CONSTRAINT asks_for_student_id_fkey 
+        FOREIGN KEY (student_id) REFERENCES STUDENTS(student_id) ON DELETE CASCADE;
+
+-- Update ASKS_FOR -> STAFFS DONE
+ALTER TABLE ASKS_FOR
+    DROP CONSTRAINT asks_for_staff_id_fkey,
+    ADD CONSTRAINT asks_for_staff_id_fkey 
+        FOREIGN KEY (staff_id) REFERENCES STAFFS(staff_id) ON DELETE CASCADE;
+
+-- Update NOTICE -> STAFFS  DONE
+ALTER TABLE NOTICE
+    DROP CONSTRAINT notice_staff_id_fkey,
+    ADD CONSTRAINT notice_staff_id_fkey 
+        FOREIGN KEY (staff_id) REFERENCES STAFFS(staff_id) ON DELETE SET NULL;
+
+-- Update PAYMENT_DELETE_REQUESTS -> STAFFS (requested_by) DONE
+ALTER TABLE PAYMENT_DELETE_REQUESTS
+    DROP CONSTRAINT payment_delete_requests_requested_by_fkey,
+    ADD CONSTRAINT payment_delete_requests_requested_by_fkey 
+        FOREIGN KEY (requested_by) REFERENCES STAFFS(staff_id) ON DELETE CASCADE;
+
+-- Update PAYMENT_DELETE_REQUESTS -> STAFFS (reviewed_by) DONE
+    DROP CONSTRAINT payment_delete_requests_reviewed_by_fkey,
+    ADD CONSTRAINT payment_delete_requests_reviewed_by_fkey 
+        FOREIGN KEY (reviewed_by) REFERENCES STAFFS(staff_id) ON DELETE CASCADE;
