@@ -581,23 +581,7 @@ const StaffDashboard: React.FC = () => {
             </button>
           </section>
 
-          <section className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-5`}>
-            <h3 className={`text-lg font-semibold ${theme.textPrimary}`}>Quick Actions</h3>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={() => navigate('/profile')} className={`px-4 py-2 rounded-lg text-sm font-medium ${theme.secondary} text-white`}>
-                Edit Profile
-              </button>
-              <button type="button" onClick={() => navigate('/notices-manage')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${theme.cardBorder} ${theme.textPrimary}`}>
-                Manage Notices
-              </button>
-              <button type="button" onClick={() => navigate('/add-payments')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${theme.cardBorder} ${theme.textPrimary}`}>
-                Add Payments
-              </button>
-              <button type="button" onClick={() => navigate('/seat-applications')} className={`px-4 py-2 rounded-lg text-sm font-medium border ${theme.cardBorder} ${theme.textPrimary}`}>
-                Seat Applications
-              </button>
-            </div>
-          </section>
+          
         </>
       )}
     </div>

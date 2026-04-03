@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from datetime import datetime, date
 from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
@@ -483,3 +483,159 @@ def get_staff_for_assignment():
     staff_list = execute_read_query(sql, (current_hall_id, current_admin_id))
     
     return jsonify(staff_list if staff_list else []), 200
+
+# --- STAFF MANAGEMENT ---
+
+@admin_bp.route('/staffs', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_hall_staffs():
+    """
+    Returns a paginated list of staff in the provost's hall.
+    Query params:
+      - page    (int, default 1)
+      - limit   (int, default 10)
+      - search  (str, searches staff_id and name via ILIKE)
+    """
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    try:
+        page  = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10))
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params"}), 400
+
+    if page < 1:
+        return jsonify({"error": "page must be >= 1"}), 400
+
+    limit = max(1, min(limit, 50))
+    offset       = (page - 1) * limit
+    search_query = request.args.get('search', '').strip()
+
+    base_sql = """
+        FROM STAFFS s
+        JOIN USERS u ON s.user_id = u.user_id
+        WHERE s.hall_id = %s
+          AND s.staff_id != %s
+    """
+    params = [current_hall_id, current_admin_id]
+
+    if search_query:
+        base_sql += " AND (s.staff_id ILIKE %s OR s.name ILIKE %s)"
+        params.extend([f"%{search_query}%", f"%{search_query}%"])
+
+    select_sql = """
+        SELECT
+            s.staff_id,
+            s.name,
+            s.role,
+            s.phone_number,
+            u.email_address,
+            (s.photo IS NOT NULL) AS has_photo
+    """ + base_sql + """
+        ORDER BY s.name ASC
+        LIMIT %s OFFSET %s
+    """
+    select_params = params + [limit, offset]
+    staffs = execute_read_query(select_sql, tuple(select_params))
+
+    count_sql = "SELECT COUNT(*) AS total " + base_sql
+    total_result = execute_read_query(count_sql, tuple(params))
+    total_count  = total_result[0]['total'] if total_result else 0
+
+    return jsonify({
+        "staffs": staffs if staffs else [],
+        "pagination": {
+            "page":        page,
+            "limit":       limit,
+            "total_staffs": total_count,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+    }), 200
+
+
+@admin_bp.route('/staffs/<string:staff_id>', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_staff_detail(staff_id):
+    """
+    Returns full details of a single staff member.
+    Scoped to the provost's hall so a provost can't peek at other halls.
+    """
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    sql = """
+        SELECT
+            s.staff_id,
+            s.name,
+            s.role,
+            s.phone_number,
+            s.salary,
+            u.email_address,
+            h.name       AS hall_name,
+            (s.photo IS NOT NULL) AS has_photo
+        FROM STAFFS s
+        JOIN USERS u ON s.user_id  = u.user_id
+        JOIN HALLS h ON s.hall_id  = h.hall_id
+        WHERE s.staff_id = %s
+          AND s.hall_id  = %s
+    """
+    result = execute_read_query(sql, (staff_id, current_hall_id))
+
+    if not result:
+        return jsonify({"error": "Staff member not found in your hall"}), 404
+
+    return jsonify(result[0]), 200
+
+@admin_bp.route('/staffs/<string:staff_id>/photo', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_staff_photo(staff_id):
+    
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+    sql = """
+        SELECT photo
+        FROM STAFFS
+        WHERE staff_id = %s AND hall_id = %s
+        """
+    result = execute_read_query(sql, (staff_id, current_hall_id))
+    if not result or not result[0].get('photo'):
+        return jsonify({"error": "No photo found"}), 404
+    return Response(
+        result[0]['photo'],
+        mimetype='image/jpeg', 
+        headers={"Content-Disposition": "inline; filename=profile_photo.jpg"}
+    )
+
+@admin_bp.route('/staffs/<string:staff_id>', methods=['DELETE', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def delete_staff(staff_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    # 1. Verify the staff exists in THIS provost's hall and grab their user_id
+    verify_sql = """
+        SELECT user_id FROM STAFFS
+        WHERE staff_id = %s AND hall_id = %s
+    """
+    result = execute_read_query(verify_sql, (staff_id, current_hall_id))
+    if not result:
+        return jsonify({"error": "Staff member not found in your hall"}), 404
+
+    user_id = result[0]['user_id']
+
+    # 2. Deleting the USERS row is all that's needed now.
+    #    STAFFS cascades from USERS, which then cascades further:
+    #      USERS → STAFFS → TASKS, task_assignments, SALARY, ASKS_FOR, PAYMENT_DELETE_REQUESTS
+    #      STAFFS → NOTICE (staff_id SET NULL, notices are preserved)
+    execute_write_query(
+        "DELETE FROM USERS WHERE user_id = %s",
+        (user_id,)
+    )
+
+    return jsonify({
+        "message": f"Staff {staff_id} and all associated records deleted successfully"
+    }), 200
