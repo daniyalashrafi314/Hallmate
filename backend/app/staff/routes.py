@@ -416,7 +416,9 @@ def create_notice():
     title = request.form.get('title')
     description = request.form.get('description')
     pdf_file = request.files.get('pdf_file')
-    is_public = request.form.get('is_public') == 'true'
+
+    raw_is_public = request.form.get('is_public')
+    is_public_bool = True if str(raw_is_public).lower() == 'true' else False
 
     pdf_bytes = None
     if pdf_file:
@@ -434,7 +436,7 @@ def create_notice():
         VALUES (%s, %s, %s, %s, %s)
         RETURNING notice_id;
     """
-    values = (current_staff_id, title, description, pdf_bytes, is_public)
+    values = (current_staff_id, title, description, pdf_bytes, is_public_bool)
     result = execute_write_query(query, values)
 
     return jsonify({"notice_id": result}), 201
