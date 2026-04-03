@@ -257,3 +257,37 @@ CREATE TABLE STUDENT_NOTICE_STATES (
     is_hidden  BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (student_id, notice_id)
 );
+
+CREATE TYPE task_priority AS ENUM ('low', 'medium', 'high');
+CREATE TYPE task_status   AS ENUM ('pending', 'in_progress', 'completed', 'cancelled', 'submitted');
+
+CREATE TABLE TASKS (
+    task_id     SERIAL PRIMARY KEY,
+    provost_id  CHAR(10) NOT NULL,
+    title       VARCHAR(150) NOT NULL,
+    description TEXT,
+    priority    task_priority DEFAULT 'medium',
+    status      task_status DEFAULT 'pending',
+    due_date    DATE,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP,
+    FOREIGN KEY (provost_id) 
+        REFERENCES STAFFS(staff_id) 
+        ON DELETE CASCADE
+); -- Removed the extra comma here
+
+CREATE TABLE task_assignments (
+    assignment_id SERIAL PRIMARY KEY,
+    task_id       INT NOT NULL,
+    staff_id      CHAR(10) NOT NULL,
+    assigned_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    seen_at       TIMESTAMP,
+    FOREIGN KEY (task_id) 
+        REFERENCES TASKS(task_id) 
+        ON DELETE CASCADE,
+    FOREIGN KEY (staff_id) 
+        REFERENCES STAFFS(staff_id) 
+        ON DELETE CASCADE,
+    -- Prevents duplicate assignments
+    UNIQUE (task_id, staff_id) 
+);

@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from datetime import datetime, date
 from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
 
@@ -43,32 +44,7 @@ def get_dashboard():
 
 
 
-# --- 1) VIEW USERS (Students & Staff) ---
-@admin_bp.route('/students', methods=['GET'])
-@token_required(allowed_roles=['admin'])
-def get_all_students():
-    current_admin_id = request.current_user_id
-    current_hall_id  = get_current_hall_id(current_admin_id)
-    sql = """
-        SELECT s.*, h.name as hall_name, u.email_address 
-        FROM STUDENTS s
-        JOIN HALLS h ON s.hall_id = h.hall_id
-        JOIN USERS u ON s.user_id = u.user_id
-    """
-    return jsonify(execute_read_query(sql))
 
-@admin_bp.route('/staff', methods=['GET'])
-@token_required(allowed_roles=['admin'])
-def get_all_staff():
-    current_admin_id = request.current_user_id
-    current_hall_id  = get_current_hall_id(current_admin_id)
-    sql = """
-        SELECT s.*, h.name as hall_name, u.email_address 
-        FROM STAFFS s
-        JOIN HALLS h ON s.hall_id = h.hall_id
-        JOIN USERS u ON s.user_id = u.user_id
-    """
-    return jsonify(execute_read_query(sql))
 
 
 
@@ -251,3 +227,259 @@ def update_seat_approval_status(app_id):
     if execute_write_query(sql, (new_status, app_id)):
         return jsonify({"message": f"Application {new_status.lower()} successfully."}), 200
     return jsonify({"error": "Failed to update status."}), 500
+
+    # Tasks page
+
+    # --- ADMIN TASK MANAGEMENT ---
+
+@admin_bp.route('/tasks', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_hall_tasks():
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+    
+    # Pagination
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
+    offset = (page - 1) * limit
+    
+    # Filters & Search
+    status_filter = request.args.get('status', 'all')
+    search_query = request.args.get('search', '').strip()
+    
+    valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled', 'submitted']
+    if status_filter != 'all' and status_filter not in valid_statuses:
+        return jsonify({"error": "Invalid status filter"}), 400
+
+    # Base query: Join tasks with assignments and staff to ensure it's in the admin's hall
+    base_sql = """
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+    """
+    params = [current_hall_id]
+
+    # Dynamically build WHERE clauses based on filters
+    if status_filter != 'all':
+        base_sql += " AND t.status = %s"
+        params.append(status_filter)
+        
+    if search_query:
+        base_sql += " AND (ta.staff_id ILIKE %s OR t.title ILIKE %s)"
+        params.extend([f"%{search_query}%", f"%{search_query}%"])
+
+    # Fetch paginated tasks
+    select_sql = """
+        SELECT 
+            t.task_id, 
+            t.title, 
+            t.priority, 
+            t.status, 
+            t.due_date, 
+            t.created_at,
+            ta.staff_id,
+            s.name AS staff_name
+    """ + base_sql + """
+        ORDER BY 
+            CASE t.priority 
+                WHEN 'high' THEN 1 
+                WHEN 'medium' THEN 2 
+                WHEN 'low' THEN 3 
+            END ASC,
+            t.created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    select_params = params + [limit, offset]
+    tasks = execute_read_query(select_sql, tuple(select_params))
+
+    # Fetch total count for frontend pagination
+    count_sql = "SELECT COUNT(*) as total " + base_sql
+    total_result = execute_read_query(count_sql, tuple(params))
+    total_count = total_result[0]['total'] if total_result else 0
+
+    return jsonify({
+        "tasks": tasks if tasks else [],
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total_tasks": total_count,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+    }), 200
+
+
+@admin_bp.route('/tasks/<int:task_id>', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_admin_task_details(task_id):
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+    
+    sql = """
+        SELECT 
+            t.*, 
+            ta.assignment_id,
+            ta.assigned_at, 
+            ta.seen_at,
+            ta.staff_id,
+            s.name AS staff_name,
+            s.role AS staff_role
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE t.task_id = %s AND s.hall_id = %s
+    """
+    result = execute_read_query(sql, (task_id, current_hall_id))
+    
+    if not result:
+        return jsonify({"error": "Task not found in your hall"}), 404
+        
+    return jsonify(result[0]), 200
+
+
+@admin_bp.route('/tasks', methods=['POST', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def create_task():
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+    data = request.get_json()
+
+    # Extract required fields
+    title = data.get('title')
+    description = data.get('description', '')
+    priority = data.get('priority', 'medium')
+    due_date = data.get('due_date')
+    assigned_staff_id = data.get('assigned_staff_id')
+
+    if not title or not assigned_staff_id:
+        return jsonify({"error": "Title and assigned_staff_id are required"}), 400
+
+    valid_priorities = ['low', 'medium', 'high']
+    if priority not in valid_priorities:
+        return jsonify({"error": "Invalid priority"}), 400
+
+    # Enforce due_date validity: format must be YYYY-MM-DD and cannot be in the past.
+    if due_date:
+        try:
+            parsed_due_date = datetime.strptime(str(due_date), '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Invalid due_date format. Expected YYYY-MM-DD."}), 400
+
+        if parsed_due_date < date.today():
+            return jsonify({"error": "Due date cannot be earlier than today."}), 400
+
+    # 1. Verify the target staff member actually belongs to this admin's hall
+    verify_staff_sql = "SELECT 1 FROM STAFFS WHERE staff_id = %s AND hall_id = %s"
+    if not execute_read_query(verify_staff_sql, (assigned_staff_id, current_hall_id)):
+        return jsonify({"error": "Staff member not found or does not belong to your hall"}), 403
+
+    # 2. Insert the Task AND the Task Assignment in one go using a CTE
+    insert_sql = """
+        WITH new_task AS (
+            INSERT INTO TASKS (provost_id, title, description, priority, due_date)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING task_id
+        )
+        INSERT INTO task_assignments (task_id, staff_id)
+        SELECT task_id, %s FROM new_task;
+    """
+    
+    params = (current_admin_id, title, description, priority, due_date, assigned_staff_id)
+    
+    if execute_write_query(insert_sql, params):
+        return jsonify({"message": "Task successfully created and assigned"}), 201
+    
+    return jsonify({"error": "Failed to create task"}), 500
+
+
+@admin_bp.route('/tasks/<int:task_id>/status', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def admin_update_task_status(task_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+    data = request.get_json()
+    new_status = data.get('status')
+
+    valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled', 'submitted']
+    if new_status not in valid_statuses:
+        return jsonify({"error": "Invalid status"}), 400
+
+    # Verify task belongs to this admin's hall before updating
+    verify_sql = """
+        SELECT 1 FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE t.task_id = %s AND s.hall_id = %s
+    """
+    if not execute_read_query(verify_sql, (task_id, current_hall_id)):
+        return jsonify({"error": "Task not found in your hall"}), 404
+
+    update_sql = "UPDATE TASKS SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE task_id = %s"
+    if execute_write_query(update_sql, (new_status, task_id)):
+        return jsonify({"message": f"Task successfully marked as {new_status}"}), 200
+        
+    return jsonify({"error": "Failed to update task status"}), 500
+
+
+@admin_bp.route('/tasks/<int:task_id>', methods=['DELETE', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def admin_delete_task(task_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id = get_current_hall_id(current_admin_id)
+
+    # Verify task belongs to this admin's hall before deleting
+    verify_sql = """
+        SELECT 1
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE t.task_id = %s AND s.hall_id = %s
+    """
+    if not execute_read_query(verify_sql, (task_id, current_hall_id)):
+        return jsonify({"error": "Task not found in your hall"}), 404
+
+    delete_sql = "DELETE FROM TASKS WHERE task_id = %s"
+    if execute_write_query(delete_sql, (task_id,)):
+        return jsonify({"message": "Task deleted successfully", "task_id": task_id}), 200
+
+    return jsonify({"error": "Failed to delete task"}), 500
+
+@admin_bp.route('/task-staff', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_staff_for_assignment():
+    """
+    Returns a list of staff members in the same hall as the Provost.
+    Used to populate the staff selection dropdown in the 'New Task' modal.
+    """
+    current_admin_id = request.current_user_id
+    
+    # --- HELPER FUNCTION USED HERE ---
+    # Fetches the hall_id of the currently logged-in Provost/Admin
+    current_hall_id = get_current_hall_id(current_admin_id)
+    
+    if not current_hall_id:
+        return jsonify({"error": "Hall not found for current user"}), 404
+
+    # Fetch staff members belonging to this specific hall
+    # We exclude the Provost themselves if you don't want them assigning tasks to themselves
+    sql = """
+        SELECT staff_id, name, role 
+        FROM STAFFS 
+        WHERE hall_id = %s AND staff_id != %s
+        ORDER BY name ASC
+    """
+    staff_list = execute_read_query(sql, (current_hall_id, current_admin_id))
+    
+    return jsonify(staff_list if staff_list else []), 200

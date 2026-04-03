@@ -27,12 +27,14 @@ import StaffDonations from './pages/Staff/StaffDonations';
 import StaffNotices from './pages/Staff/StaffNotices';
 import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
+import StaffTasks from './pages/Staff/StaffTasks';
 import StaffDashboard from './pages/Staff/StaffDashboard';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
 import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
+import ProvostTasks from './pages/Provost/ProvostTasks';
 import ProvostDashboard from './pages/Provost/ProvostDashboard';
 
 // 1. Update Context to handle actual Authentication state
@@ -149,6 +151,26 @@ const App: React.FC = () => {
                         <Route path="/salary" element={<StaffSalary />} />
                         <Route path="/seat-applications" element={<StaffSeatApplications />} />
                         <Route path="/seat-applications/:id" element={<StaffSeatApplications />} />
+                        <Route
+                          path="/tasks"
+                          element={
+                            userRole === UserRole.STAFF
+                              ? <StaffTasks />
+                              : userRole === UserRole.PROVOST
+                                ? <ProvostTasks />
+                                : <Navigate to="/dashboard" replace />
+                          }
+                        />
+                        <Route
+                          path="/tasks/:id"
+                          element={
+                            userRole === UserRole.STAFF
+                              ? <StaffTasks />
+                              : userRole === UserRole.PROVOST
+                                ? <ProvostTasks />
+                                : <Navigate to="/dashboard" replace />
+                          }
+                        />
                         <Route path="/profile" element={userRole === UserRole.STUDENT ? <StudentProfile /> : <StaffProfile />} />
                         <Route path="/notices-manage" element={<StaffNotices />} />
 

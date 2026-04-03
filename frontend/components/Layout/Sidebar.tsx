@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Home, Users, CreditCard, FileText, ShieldCheck, Grid, 
-  Calendar, Layers, LogOut, UserCircle, ClipboardList, Heart
+  Calendar, Layers, LogOut, UserCircle, ClipboardList, Heart, ListTodo
 } from 'lucide-react';
 import { useAppContext } from '../../App';
 import { UserRole } from '../../types';
@@ -31,6 +31,7 @@ const Sidebar: React.FC = () => {
       { to: '/profile', label: 'My Profile', icon: UserCircle },
       { to: '/visitors', label: 'Visitors', icon: Users },
       { to: '/notices-manage', label: 'Notices', icon: FileText },
+      { to: '/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/add-students', label: 'Add Students', icon: Users },
       { to: '/seat-applications', label: 'Seat Applications', icon: ClipboardList },
       { to: '/salary', label: 'Salary', icon: CreditCard },
@@ -39,6 +40,7 @@ const Sidebar: React.FC = () => {
     ],
     [UserRole.PROVOST]: [
       { to: '/dashboard', label: 'Dashboard', icon: Home },
+      { to: '/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/users', label: 'User Management', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Seat Approvals', icon: ShieldCheck },

@@ -1264,3 +1264,155 @@ def delete_visitor(visitor_id):
         return jsonify({"error": "Visitor not found or unauthorized"}), 403
 
     return jsonify({"message": "Visitor log deleted"}), 200
+
+#       Task page 
+
+@staff_bp.route('/tasks', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_staff_tasks():
+    current_staff_id = request.current_user_id
+    
+    # Pagination parameters
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
+    offset = (page - 1) * limit
+    
+    # Filter parameter validation
+    valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled', 'submitted']
+    status_filter = request.args.get('status', 'all')
+    
+    if status_filter != 'all' and status_filter not in valid_statuses:
+        return jsonify({"error": "Invalid status filter"}), 400
+
+    # Added ta.seen_at to the SELECT clause
+    base_sql = """
+        SELECT 
+            t.task_id, 
+            t.title, 
+            t.priority, 
+            t.status, 
+            t.due_date, 
+            t.created_at,
+            ta.seen_at
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        WHERE ta.staff_id = %s
+    """
+    params = [current_staff_id]
+
+    if status_filter != 'all':
+        base_sql += " AND t.status = %s"
+        params.append(status_filter)
+
+    # Ordering by Priority (High -> Medium -> Low) then Date
+    base_sql += """
+        ORDER BY 
+            CASE t.priority 
+                WHEN 'high' THEN 1 
+                WHEN 'medium' THEN 2 
+                WHEN 'low' THEN 3 
+            END ASC,
+            t.created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    params.extend([limit, offset])
+
+    tasks = execute_read_query(base_sql, tuple(params))
+
+    # Count query remains the same for pagination metadata
+    count_sql = """
+        SELECT COUNT(*) as total
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        WHERE ta.staff_id = %s
+    """
+    count_params = [current_staff_id]
+    if status_filter != 'all':
+        count_sql += " AND t.status = %s"
+        count_params.append(status_filter)
+        
+    total_result = execute_read_query(count_sql, tuple(count_params))
+    total_count = total_result[0]['total'] if total_result else 0
+
+    return jsonify({
+        "tasks": tasks if tasks else [],
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total_tasks": total_count,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+    }), 200
+
+@staff_bp.route('/tasks/<int:task_id>', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_task_details(task_id):
+    current_staff_id = request.current_user_id
+    
+    sql = """
+        SELECT 
+            t.*, 
+            ta.assignment_id,
+            ta.assigned_at, 
+            ta.seen_at 
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        WHERE t.task_id = %s AND ta.staff_id = %s
+    """
+    result = execute_read_query(sql, (task_id, current_staff_id))
+    
+    if not result:
+        return jsonify({"error": "Task not found or not assigned to you"}), 404
+        
+    task_data = result[0]
+    
+    # Update 'seen_at' if this is the first time the staff is viewing it
+    if not task_data.get('seen_at'):
+        update_seen_sql = "UPDATE task_assignments SET seen_at = CURRENT_TIMESTAMP WHERE assignment_id = %s"
+        execute_write_query(update_seen_sql, (task_data['assignment_id'],))
+        task_data['seen_at'] = "Just now" # Optimistic update for the immediate response
+        
+    return jsonify(task_data), 200
+
+@staff_bp.route('/tasks/<int:task_id>/status', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['staff'])
+def update_task_status(task_id):
+    # Handle CORS Preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_staff_id = request.current_user_id
+    data = request.get_json() or {}
+    new_status = data.get('status')
+
+    # Security check: Prevent staff from marking as completed
+    allowed_statuses = ['pending', 'in_progress', 'submitted', 'cancelled']
+    if new_status not in allowed_statuses:
+        return jsonify({"error": "Invalid status or unauthorized. Only Provost/Admin can mark as 'completed'."}), 403
+
+    # Verify task ownership and read current status for lock checks.
+    verify_sql = """
+        SELECT t.status
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        WHERE t.task_id = %s AND ta.staff_id = %s
+    """
+    task_rows = execute_read_query(verify_sql, (task_id, current_staff_id))
+    if not task_rows:
+        return jsonify({"error": "Task not found or not assigned to you"}), 404
+
+    current_status = (task_rows[0].get('status') or '').lower()
+    if current_status in ('completed', 'cancelled'):
+        return jsonify({"error": "Task is locked. Completed or cancelled tasks cannot be changed by staff."}), 409
+
+    # Update the status and the updated_at timestamp
+    update_sql = """
+        UPDATE TASKS 
+        SET status = %s, updated_at = CURRENT_TIMESTAMP 
+        WHERE task_id = %s
+    """
+    if execute_write_query(update_sql, (new_status, task_id)):
+        return jsonify({"message": f"Task successfully marked as {new_status}"}), 200
+        
+    return jsonify({"error": "Failed to update task status"}), 500
+
