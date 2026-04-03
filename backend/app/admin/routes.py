@@ -2,6 +2,11 @@ from flask import Blueprint, request, jsonify, Response
 from datetime import datetime, date
 from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
+from app.email_service import send_welcome_email
+from app.security.passwords import hash_password
+import re
+import secrets
+import string
 
 admin_bp = Blueprint('admin', __name__)
 # --- HELPER FUNCTION ---
@@ -37,6 +42,154 @@ def get_dashboard():
         return jsonify({"error": "Staff not found"}), 404
 
     return jsonify(result[0]), 200
+
+
+# --- 1) ADMIN PROFILE PAGE ---
+
+@admin_bp.route('/profile', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_profile():
+    current_admin_id = request.current_user_id
+
+    sql = """
+        SELECT
+        s.staff_id,
+        s.name AS staff_name,
+        s.phone_number,
+        s.role,
+        s.hall_id,
+        h.name AS hall_name,
+        h.provost,
+        u.email_address,
+        (s.photo IS NOT NULL) AS has_photo
+        FROM STAFFS s
+        JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
+        WHERE s.staff_id = %s
+    """
+    profile = execute_read_query(sql, (current_admin_id,))
+
+    if profile:
+        return jsonify(profile[0])
+    return jsonify({"error": "Staff not found"}), 404
+
+
+@admin_bp.route('/profile/photo', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_profile_photo():
+    current_admin_id = request.current_user_id
+
+    sql = """
+        SELECT photo
+        FROM STAFFS
+        WHERE staff_id = %s
+        """
+    result = execute_read_query(sql, (current_admin_id,))
+    if not result or not result[0].get('photo'):
+        return jsonify({"error": "No photo found"}), 404
+    return Response(
+        result[0]['photo'],
+        mimetype='image/jpeg',
+        headers={"Content-Disposition": "inline; filename=profile_photo.jpg"}
+    )
+
+
+@admin_bp.route('/profile', methods=['PUT'])
+@token_required(allowed_roles=['admin'])
+def edit_profile():
+    current_admin_id = request.current_user_id
+
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        name = request.form.get("staff_name")
+        phone = request.form.get("phone_number")
+        email = request.form.get("email_address")
+        photo_file = request.files.get("photo")
+    else:
+        data = request.get_json() or {}
+        name = data.get("staff_name")
+        phone = data.get("phone_number")
+        email = data.get("email_address")
+        photo_file = None
+
+    if not name or not email:
+        return jsonify({"error": "Missing fields"}), 400
+
+    staff_update_fields = ["name = %s", "phone_number = %s"]
+    staff_update_values = [name, phone]
+
+    if photo_file:
+        photo_bytes = photo_file.read()
+        staff_update_fields.append("photo = %s")
+        staff_update_values.append(photo_bytes)
+
+    staff_update_values.append(current_admin_id)
+
+    sql1 = f"""
+            UPDATE STAFFS
+            SET {', '.join(staff_update_fields)}
+            WHERE staff_id = %s
+            """
+    execute_write_query(sql1, tuple(staff_update_values))
+
+    sql2 = """
+        UPDATE USERS
+        SET email_address = %s
+        WHERE user_id = (
+            SELECT user_id
+            FROM STAFFS
+            WHERE staff_id = %s
+        )"""
+    execute_write_query(sql2, (email, current_admin_id))
+
+    sql3 = """
+        SELECT role, hall_id
+        FROM STAFFS
+        WHERE staff_id = %s
+        """
+    result = execute_read_query(sql3, (current_admin_id,))
+
+    if result:
+        role = result[0]["role"]
+        hall_id = result[0]["hall_id"]
+
+        if role and role.lower() == "provost":
+            sql4 = """
+            UPDATE HALLS
+            SET provost = %s
+            WHERE hall_id = %s
+            """
+            execute_write_query(sql4, (name, hall_id))
+
+    return jsonify({"message": "Profile updated successfully"}), 200
+
+
+@admin_bp.route('/change-password', methods=['PUT'])
+@token_required(allowed_roles=['admin'])
+def change_password():
+    current_admin_id = request.current_user_id
+    data = request.get_json()
+
+    new_password = data.get("new_password")
+    confirm_password = data.get("confirm_password")
+    if not new_password:
+        return jsonify({"error": "Password required"}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"error": "Passwords do not match"}), 400
+
+    hashed_password = hash_password(new_password)
+
+    sql = """
+        UPDATE USERS
+        SET password = %s
+        WHERE user_id = (
+            SELECT user_id
+            FROM STAFFS
+            WHERE staff_id = %s
+            )
+        """
+    execute_write_query(sql, (hashed_password, current_admin_id))
+    return jsonify({"message": "Password changed successfully"})
 
 
 
@@ -821,5 +974,6 @@ def add_student():
         "student_id": student_id,
         "user_id": student_id
     }), 201
+
 
 

@@ -30,6 +30,7 @@ import StaffSalary from './pages/Staff/StaffSalary';
 import StaffSeatApplications from './pages/Staff/StaffSeatApplications';
 import StaffTasks from './pages/Staff/StaffTasks';
 import StaffDashboard from './pages/Staff/StaffDashboard';
+import ProvostProfile from './pages/Provost/ProvostProfile';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
@@ -173,7 +174,16 @@ const App: React.FC = () => {
                                 : <Navigate to="/dashboard" replace />
                           }
                         />
-                        <Route path="/profile" element={userRole === UserRole.STUDENT ? <StudentProfile /> : <StaffProfile />} />
+                        <Route
+                          path="/profile"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentProfile />
+                              : userRole === UserRole.STAFF
+                                ? <StaffProfile />
+                                : <ProvostProfile />
+                          }
+                        />
                         <Route path="/notices-manage" element={<StaffNotices />} />
 
                         {/* Provost Routes */}
