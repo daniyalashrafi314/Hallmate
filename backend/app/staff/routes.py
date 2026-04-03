@@ -19,8 +19,8 @@ def get_current_hall_id(staff_id):
     result = execute_read_query(sql, (staff_id,))
     return result[0]['hall_id'] if result else None
 
-#Staff page
 # --- ADMIN DASHBOARD ---
+
 
 @staff_bp.route('/dashboard', methods=['GET'])
 @token_required(allowed_roles=['staff'])
@@ -28,25 +28,162 @@ def get_dashboard():
     current_staff_id = request.current_user_id
     current_hall_id  = get_current_hall_id(current_staff_id)
 
-    sql = """
+    # ── Staff profile (unchanged) ────────────────────────────────────────────
+    profile_sql = """
         SELECT
             s.staff_id,
-            s.name       AS name,
+            s.name          AS name,
+            s.role,
             s.phone_number,
             u.email_address,
-            h.name       AS hall_name,
+            h.name          AS hall_name,
             h.hall_id,
             (s.photo IS NOT NULL) AS has_photo
         FROM STAFFS s
-        JOIN USERS u  ON s.user_id  = u.user_id
-        JOIN HALLS h  ON s.hall_id  = h.hall_id
+        JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
         WHERE s.staff_id = %s
     """
-    result = execute_read_query(sql, (current_staff_id,))
-    if not result:
+    profile = execute_read_query(profile_sql, (current_staff_id,))
+    if not profile:
         return jsonify({"error": "Staff not found"}), 404
 
-    return jsonify(result[0]), 200
+    # ── 1) Top task assigned to this staff member ────────────────────────────
+    # Highest priority first, then soonest due date, then newest.
+    # Excludes completed / cancelled tasks (nothing actionable there).
+    top_task_sql = """
+        SELECT
+            t.task_id,
+            t.title,
+            t.priority,
+            t.status,
+            TO_CHAR(t.due_date,    'YYYY-MM-DD')                   AS due_date,
+            TO_CHAR(t.created_at,  'YYYY-MM-DD"T"HH24:MI:SS"Z"')   AS created_at,
+            ta.seen_at IS NULL AS is_unseen
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        WHERE ta.staff_id = %s
+          AND t.status NOT IN ('completed', 'cancelled')
+        ORDER BY
+            CASE t.priority
+                WHEN 'high'   THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'low'    THEN 3
+            END ASC,
+            t.due_date   ASC NULLS LAST,
+            t.created_at DESC
+        LIMIT 1
+    """
+    top_task = execute_read_query(top_task_sql, (current_staff_id,))
+
+    # ── 2) Latest notice posted in this hall ────────────────────────────────
+    top_notice_sql = """
+        SELECT
+            n.notice_id,
+            n.title,
+            n.is_public,
+            s.name                                                    AS posted_by,
+            TO_CHAR(n.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')      AS created_at
+        FROM NOTICE n
+        JOIN STAFFS s ON n.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+        ORDER BY n.created_at DESC
+        LIMIT 1
+    """
+    top_notice = execute_read_query(top_notice_sql, (current_hall_id,))
+
+    # ── 3) Top pending seat application for this hall ───────────────────────
+    # Priority value DESC (higher value = more urgent), then oldest date first
+    # (first-come, first-served within the same priority).
+    top_application_sql = """
+        SELECT
+            sa.application_id,
+            sa.student_id,
+            st.name                               AS student_name,
+            TO_CHAR(sa.date, 'YYYY-MM-DD')        AS applied_on,
+            sa.priority_value,
+            sa.status
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS st ON sa.student_id = st.student_id
+        WHERE st.hall_id = %s
+          AND sa.status  = 'Pending'
+        ORDER BY
+            sa.priority_value DESC NULLS LAST,
+            sa.date           ASC
+        LIMIT 1
+    """
+    top_application = execute_read_query(top_application_sql, (current_hall_id,))
+
+    # ── 4 & 5) Student counts + resident percentage ─────────────────────────
+    student_stats_sql = """
+        SELECT
+            COUNT(*)                                                        AS total_students,
+            COUNT(*) FILTER (WHERE status = 'RESIDENT')                     AS resident_count,
+            COUNT(*) FILTER (WHERE status = 'ATTACHED')                     AS attached_count,
+            ROUND(
+                COUNT(*) FILTER (WHERE status = 'RESIDENT')
+                    * 100.0 / NULLIF(COUNT(*), 0), 1
+            )                                                               AS resident_percentage
+        FROM STUDENTS
+        WHERE hall_id = %s
+    """
+    student_stats = execute_read_query(student_stats_sql, (current_hall_id,))
+
+    # ── 6 & 7) Room / seat totals + occupancy percentage ────────────────────
+    seat_stats_sql = """
+        SELECT
+            COUNT(DISTINCT r.room_id)                                        AS total_rooms,
+            COUNT(se.seat_number)                                            AS total_seats,
+            COUNT(se.seat_number) FILTER (WHERE se.status = 'occupied')      AS occupied_seats,
+            COUNT(se.seat_number) FILTER (WHERE se.status = 'vacant')        AS vacant_seats,
+            ROUND(
+                COUNT(se.seat_number) FILTER (WHERE se.status = 'occupied')
+                    * 100.0 / NULLIF(COUNT(se.seat_number), 0), 1
+            )                                                                AS occupancy_percentage
+        FROM ROOMS r
+        LEFT JOIN SEATS se ON r.room_id = se.room_id
+        WHERE r.hall_id = %s
+    """
+    seat_stats = execute_read_query(seat_stats_sql, (current_hall_id,))
+
+    # ── 8) Top active / approved donation ───────────────────────────────────
+    # Shows the most recently started donation that is still running.
+    # Falls back to latest Pending donation if nothing is Approved.
+    top_donation_sql = """
+        SELECT
+            d.donation_id,
+            d.status,
+            d.description,
+            TO_CHAR(d.start_date, 'YYYY-MM-DD') AS start_date,
+            TO_CHAR(d.end_date,   'YYYY-MM-DD') AS end_date
+        FROM DONATIONS d
+        WHERE (d.end_date IS NULL OR d.end_date >= CURRENT_DATE)
+        ORDER BY
+            CASE d.status
+                WHEN 'Approved' THEN 1
+                WHEN 'Pending'  THEN 2
+                ELSE 3
+            END ASC,
+            d.start_date DESC
+        LIMIT 1
+    """
+    top_donation = execute_read_query(top_donation_sql, ())
+
+    # ── Assemble and return ──────────────────────────────────────────────────
+    return jsonify({
+        # Profile block (unchanged keys)
+        **profile[0],
+
+        # Widget summaries
+        "top_task":        top_task[0]        if top_task        else None,
+        "top_notice":      top_notice[0]      if top_notice      else None,
+        "top_application": top_application[0] if top_application else None,
+        "top_donation":    top_donation[0]    if top_donation    else None,
+
+        # Stat blocks (suitable for cards or charts on the frontend)
+        "student_stats":   student_stats[0]   if student_stats   else {},
+        "seat_stats":      seat_stats[0]      if seat_stats      else {},
+    }), 200
 
 
 

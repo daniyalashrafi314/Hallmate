@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAppContext } from '../../App';
 import {
   AlertCircle,
@@ -88,6 +89,8 @@ const formatDate = (value: string | null | undefined) => {
 
 const StaffTasks: React.FC = () => {
   const { theme } = useAppContext();
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   const [tasks, setTasks] = useState<StaffTaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +149,16 @@ const StaffTasks: React.FC = () => {
     fetchTasks(1, selectedStatus);
   }, [selectedStatus]);
 
+  useEffect(() => {
+    if (!id) return;
+
+    const taskId = Number(id);
+    if (Number.isNaN(taskId)) return;
+
+    openTask(taskId);
+    // The task modal should open automatically when landing on /tasks/:id.
+  }, [id]);
+
   const refreshList = async (page = currentPage, status = selectedStatus) => {
     setListRefreshing(true);
     await fetchTasks(page, status);
@@ -188,6 +201,9 @@ const StaffTasks: React.FC = () => {
 
   const closeTask = () => {
     setSelectedTask(null);
+    if (id) {
+      navigate('/tasks');
+    }
   };
 
   const updateTaskStatus = async (status: StaffEditableStatus) => {
