@@ -435,15 +435,19 @@ CREATE TABLE POST_LIKES (
 
 
 -- 31. NOTIFICATIONS (depends on STUDENTS)
-CREATE TYPE notification_type AS ENUM ('DONATION', 'EVENT', 'NOTICE', 'PAYMENT', 'COMPLAINT', 'SEAT APPLICATION');
+CREATE TYPE notification_type AS ENUM ('DONATION', 'EVENT', 'NOTICE', 'PAYMENT', 'TASK', 'SALARY', 'COMPLAINT', 'SEAT APPLICATION');
 
 CREATE TABLE NOTIFICATIONS (
     notification_id SERIAL PRIMARY KEY,
     student_id VARCHAR(50) REFERENCES STUDENTS(student_id) ON DELETE CASCADE,
+    staff_id CHAR(10) REFERENCES STAFFS(staff_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
     type notification_type NOT NULL,
     target_url VARCHAR(255) NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT notifications_has_recipient CHECK (
+        (student_id IS NOT NULL) OR (staff_id IS NOT NULL)
+    )
 );

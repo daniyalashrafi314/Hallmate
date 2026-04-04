@@ -82,7 +82,7 @@ const AddPaymentTab: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const paymentTypes = ['Tuition', 'Hostel', 'Mess', 'Other'];
+  const paymentTypes = ['Hall Fee', 'Dining Fee', 'Event Fee', 'Maintenance', 'Other'];
 
   const fetchInitialData = async () => {
     try {

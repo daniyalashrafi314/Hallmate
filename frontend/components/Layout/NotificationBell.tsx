@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCircle, Info, AlertCircle, DollarSign, Calendar, MessageSquare } from 'lucide-react';
+import { Bell, Check, CheckCircle, Info, AlertCircle, DollarSign, Calendar, MessageSquare, Briefcase, Wallet } from 'lucide-react';
+import { useAppContext } from '../../App';
+import { UserRole } from '../../types';
 
-type NotificationType = 'DONATION' | 'EVENT' | 'NOTICE' | 'PAYMENT' | 'COMPLAINT' | 'SEAT APPLICATION';
+type NotificationType = 'DONATION' | 'EVENT' | 'NOTICE' | 'PAYMENT' | 'COMPLAINT' | 'SEAT APPLICATION' | 'TASK' | 'SALARY';
 
 interface Notification {
   id: number;
@@ -19,15 +21,26 @@ const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { userRole } = useAppContext();
 
-  const API_BASE = 'http://localhost:5000/student/notifications';
+  const getApiEndpoint = () => {
+    switch (userRole) {
+      case UserRole.STUDENT:
+        return 'http://localhost:5000/student/notifications';
+      case UserRole.STAFF:
+        return 'http://localhost:5000/staff/notifications';
+      default:
+        return 'http://localhost:5000/student/notifications';
+    }
+  };
+
   const token = localStorage.getItem('hallmate_token');
 
   useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userRole]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -41,7 +54,7 @@ const NotificationBell: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch(API_BASE, {
+      const response = await fetch(getApiEndpoint(), {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -63,18 +76,21 @@ const NotificationBell: React.FC = () => {
     setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n));
     setIsOpen(false);
     
-    // 2. FIX FOR ROUTING MISMATCH: Remove '/student' prefix if it exists
+    // 2. Navigate to the target URL
     let routePath = notification.target_url;
+    // Remove role-prefixes if they exist (e.g., /student/, /staff/)
     if (routePath.startsWith('/student/')) {
-      routePath = routePath.replace('/student', '');
+      routePath = routePath.replace('/student/', '/');
+    } else if (routePath.startsWith('/staff/')) {
+      routePath = routePath.replace('/staff/', '/');
     }
     
-    console.log("Navigating correctly to:", routePath);
+    console.log("Navigating to:", routePath);
     navigate(routePath);
 
     // 3. Update Backend
     try {
-      await fetch(`${API_BASE}/${notification.id}/read`, {
+      await fetch(`${getApiEndpoint()}/${notification.id}/read`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -88,7 +104,7 @@ const NotificationBell: React.FC = () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     
     try {
-      await fetch(`${API_BASE}/read-all`, {
+      await fetch(`${getApiEndpoint()}/read-all`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -108,6 +124,8 @@ const NotificationBell: React.FC = () => {
       case 'NOTICE': return <Info className="w-5 h-5 text-blue-500" />;
       case 'PAYMENT': return <AlertCircle className="w-5 h-5 text-red-500" />;
       case 'SEAT APPLICATION': return <CheckCircle className="w-5 h-5 text-indigo-500" />;
+      case 'TASK': return <Briefcase className="w-5 h-5 text-cyan-500" />;
+      case 'SALARY': return <Wallet className="w-5 h-5 text-green-500" />;
       default: return <Bell className="w-5 h-5 text-gray-500" />;
     }
   };

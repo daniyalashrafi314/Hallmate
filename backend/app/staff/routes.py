@@ -1702,3 +1702,51 @@ def get_staff_events():
     """
     events = execute_read_query(sql, (current_hall_id,))
     return jsonify(events or [])
+
+
+# --- NOTIFICATIONS ---
+
+# --- NOTIFICATIONS ROUTES ---
+
+@staff_bp.route('/notifications', methods=['GET'])
+@token_required(allowed_roles=['staff'])
+def get_notifications():
+    current_staff_id = request.current_user_id
+    
+    # Fetch the latest 50 notifications
+    sql = """
+        SELECT 
+            notification_id as id, 
+            title, 
+            message, 
+            type, 
+            target_url, 
+            is_read, 
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') as created_at
+        FROM NOTIFICATIONS
+        WHERE staff_id = %s
+        ORDER BY created_at DESC
+        LIMIT 50
+    """
+    notifications = execute_read_query(sql, (current_staff_id,))
+    return jsonify(notifications if notifications else []), 200
+
+@staff_bp.route('/notifications/<int:notification_id>/read', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
+def mark_notification_read(notification_id):
+    current_staff_id = request.current_user_id
+    
+    sql = "UPDATE NOTIFICATIONS SET is_read = TRUE WHERE notification_id = %s AND staff_id = %s"
+    execute_write_query(sql, (notification_id, current_staff_id))
+    
+    return jsonify({"message": "Marked as read"}), 200
+
+@staff_bp.route('/notifications/read-all', methods=['PUT'])
+@token_required(allowed_roles=['staff'])
+def mark_all_notifications_read():
+    current_staff_id = request.current_user_id
+    
+    sql = "UPDATE NOTIFICATIONS SET is_read = TRUE WHERE staff_id = %s AND is_read = FALSE"
+    execute_write_query(sql, (current_staff_id,))
+    
+    return jsonify({"message": "All marked as read"}), 200

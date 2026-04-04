@@ -218,23 +218,38 @@ FOR EACH ROW EXECUTE FUNCTION notify_donation_approved();
 CREATE OR REPLACE FUNCTION notify_donation_pledge()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_receiver_id CHAR(7);
+    v_student_id CHAR(7);
+    v_staff_id CHAR(10);
     v_amount NUMERIC(12,2);
 BEGIN
-    -- Find who created the donation
-    SELECT student_id INTO v_receiver_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
+    -- Find who created the donation (could be student or staff)
+    SELECT student_id, staff_id INTO v_student_id, v_staff_id 
+    FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
     
     -- Find the amount from the PAYMENTS table
     SELECT amount INTO v_amount FROM PAYMENTS WHERE payment_id = NEW.payment_id;
 
-    IF v_receiver_id IS NOT NULL THEN
+    -- Notify student if they created the donation
+    IF v_student_id IS NOT NULL THEN
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
         VALUES (
-            v_receiver_id, 
+            v_student_id, 
             'New Donation Pledge!', 
-            'Someone has pledged ৳' || v_amount || ' towards your request.', 
+            'Someone has pledged Tk' || v_amount || ' towards your request.', 
             'DONATION', 
             '/student/donations'
+        );
+    END IF;
+
+    -- Notify staff if they created the donation
+    IF v_staff_id IS NOT NULL THEN
+        INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+        VALUES (
+            v_staff_id, 
+            'New Donation Pledge!', 
+            'Someone has pledged Tk' || v_amount || ' towards your request.', 
+            'DONATION', 
+            '/donations'
         );
     END IF;
     
@@ -300,3 +315,151 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_overdue_payment
 AFTER UPDATE ON PAYMENTS
 FOR EACH ROW EXECUTE FUNCTION notify_overdue_payment();
+
+
+-- TRIGGER 1: Notify staff when assigned a new task
+CREATE OR REPLACE FUNCTION notify_task_assignment()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_task_title VARCHAR(150);
+    v_task_priority task_priority;
+    v_task_due_date DATE;
+BEGIN
+    -- Get task details
+    SELECT title, priority, due_date 
+    INTO v_task_title, v_task_priority, v_task_due_date
+    FROM TASKS WHERE task_id = NEW.task_id;
+
+    -- Insert notification for the assigned staff member
+    INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+    VALUES (
+        NEW.staff_id,
+        'New Task Assigned',
+        'You have been assigned a new task: "' || v_task_title || '" with priority: ' || v_task_priority || '.',
+        'TASK',
+        '/tasks'
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_task_assignment
+AFTER INSERT ON task_assignments
+FOR EACH ROW EXECUTE FUNCTION notify_task_assignment();
+
+
+-- TRIGGER 2: Notify staff when their donation request is approved
+CREATE OR REPLACE FUNCTION notify_staff_donation_approved()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_staff_id CHAR(10);
+BEGIN
+    IF NEW.status = 'Approved' AND OLD.status != 'Approved' THEN
+        -- Find out which staff member asked for this donation
+        SELECT staff_id INTO v_staff_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
+
+        -- Only notify if a staff member asked for it
+        IF v_staff_id IS NOT NULL THEN
+            INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+            VALUES (
+                v_staff_id, 
+                'Donation Request Approved', 
+                'Your donation request has been approved and is now live.', 
+                'DONATION', 
+                '/donations'
+            );
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_staff_donation_approved
+AFTER UPDATE ON DONATIONS
+FOR EACH ROW EXECUTE FUNCTION notify_staff_donation_approved();
+
+
+
+-- TRIGGER 4: Notify all staff when a new event is created in their hall
+CREATE OR REPLACE FUNCTION notify_staff_new_event()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_public THEN
+        -- Notify ALL staff members (from all halls)
+        INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+        SELECT DISTINCT staff_id, 'New Inter-Hall Event', NEW.name, 'EVENT', '/events'
+        FROM STAFFS;
+    ELSE
+        -- Notify only staff members in the same hall
+        INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+        SELECT DISTINCT staff_id, 'New Hall Event', NEW.name, 'EVENT', '/events'
+        FROM STAFFS
+        WHERE hall_id = NEW.hall_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_staff_new_event
+AFTER INSERT ON EVENTS
+FOR EACH ROW EXECUTE FUNCTION notify_staff_new_event();
+
+
+-- TRIGGER 5: Notify all staff when a new notice is posted in their hall
+CREATE OR REPLACE FUNCTION notify_staff_new_notice()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_hall_id INT;
+BEGIN
+    -- Find which hall the staff member who posted the notice belongs to
+    SELECT hall_id INTO v_hall_id FROM STAFFS WHERE staff_id = NEW.staff_id;
+
+    IF NEW.is_public THEN
+        -- Notify ALL staff members
+        INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+        SELECT DISTINCT staff_id, 'New Public Notice', NEW.title, 'NOTICE', '/notices'
+        FROM STAFFS;
+    ELSE
+        -- Notify only staff members in the same hall
+        INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+        SELECT DISTINCT staff_id, 'New Hall Notice', NEW.title, 'NOTICE', '/notices'
+        FROM STAFFS
+        WHERE hall_id = v_hall_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_staff_new_notice
+AFTER INSERT ON NOTICE
+FOR EACH ROW EXECUTE FUNCTION notify_staff_new_notice();
+
+
+-- TRIGGER 6: Notify staff when a new salary is posted for them
+CREATE OR REPLACE FUNCTION notify_salary_posted()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_amount NUMERIC(12,2);
+    v_type VARCHAR(20);
+    v_due TIMESTAMP;
+BEGIN
+    -- Fetch the payment details from the PAYMENTS table
+    SELECT amount, payment_type, due_time INTO v_amount, v_type, v_due 
+    FROM PAYMENTS WHERE payment_id = NEW.payment_id;
+
+    INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
+    VALUES (
+        NEW.staff_id, 
+        'New Salary Posted', 
+        'Your salary of Tk' || v_amount || ' has been posted. Due by ' || TO_CHAR(v_due, 'YYYY-MM-DD') || '.', 
+        'SALARY', 
+        '/salary'
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_salary_posted
+AFTER INSERT ON SALARY
+FOR EACH ROW EXECUTE FUNCTION notify_salary_posted();
