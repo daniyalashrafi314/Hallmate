@@ -45,6 +45,7 @@ import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
 import ProvostTasks from './pages/Provost/ProvostTasks';
 import ProvostDashboard from './pages/Provost/ProvostDashboard';
+import ProvostDonations from './pages/Provost/ProvostDonations';
 import ManageProvosts from './pages/SuperUser/ManageProvosts';
 
 // 1. Update Context to handle actual Authentication state
@@ -177,7 +178,16 @@ const App: React.FC = () => {
                         <Route path="/payments" element={<StudentPayments />} />
                         <Route path="/visitors" element={userRole === UserRole.STUDENT ? <StudentVisitors /> : <StaffVisitors />} />
                         <Route path="/notices" element={<StudentNotices />} />
-                        <Route path="/donations" element={userRole === UserRole.STUDENT ? <StudentDonations /> : <StaffDonations />} />
+                        <Route
+                          path="/donations"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentDonations />
+                              : userRole === UserRole.STAFF
+                                ? <StaffDonations />
+                                : <ProvostDonations />
+                          }
+                        />
                         <Route path="/complaints" element={<StudentComplaints />} />
                         <Route
                           path="/events"

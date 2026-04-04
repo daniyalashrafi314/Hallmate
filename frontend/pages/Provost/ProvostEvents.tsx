@@ -69,6 +69,7 @@ const ProvostEvents: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
@@ -176,6 +177,37 @@ const ProvostEvents: React.FC = () => {
       setFormError(err instanceof Error ? err.message : 'Failed to create event');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteSelectedEvent = async () => {
+    if (!selectedEvent || !selectedEvent.is_own_hall) return;
+
+    const confirmed = window.confirm(`Delete event \"${selectedEvent.name}\"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      setDeleting(true);
+      setError(null);
+
+      const response = await fetch(`${API_BASE}/events/${selectedEvent.id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      if (handleAuthRedirect(response.status)) return;
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Failed to delete event');
+      }
+
+      setSelectedEvent(null);
+      await fetchEvents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete event');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -365,6 +397,24 @@ const ProvostEvents: React.FC = () => {
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+              {selectedEvent.is_own_hall && (
+                <button
+                  onClick={deleteSelectedEvent}
+                  disabled={deleting}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold text-white transition ${deleting ? 'cursor-not-allowed bg-gray-400' : 'bg-red-600 hover:bg-red-700'}`}
+                >
+                  {deleting ? 'Deleting...' : 'Delete Event'}
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                <X className="h-4 w-4" /> Close
+              </button>
             </div>
           </div>
         </div>

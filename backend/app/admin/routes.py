@@ -303,31 +303,6 @@ def deallocate_seat():
 
 
 
-# --- 4) APPROVE DONATIONS ---
-@admin_bp.route('/donations/pending', methods=['GET'])
-@token_required(allowed_roles=['admin'])
-def get_pending_donations():
-    current_admin_id = request.current_user_id
-    current_hall_id  = get_current_hall_id(current_admin_id)
-    return jsonify(execute_read_query("SELECT * FROM DONATIONS WHERE status = 'Pending'"))
-
-@admin_bp.route('/donations/<int:donation_id>/approve', methods=['PUT', 'OPTIONS'])
-@token_required(allowed_roles=['admin'])
-def approve_donation(donation_id):
-    current_admin_id = request.current_user_id
-    current_hall_id  = get_current_hall_id(current_admin_id)
-
-    # Handle CORS Preflight
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    sql = "UPDATE DONATIONS SET status = 'Approved' WHERE donation_id = %s"
-    if execute_write_query(sql, (donation_id,)):
-        return jsonify({"message": "Donation request approved and is now public"})
-    return jsonify({"error": "Approval failed"}), 400
-
-
-
 # --- 5) SEAT APPROVALS ---
 
 @admin_bp.route('/seat-approvals', methods=['GET'])
@@ -1235,4 +1210,220 @@ def delete_event(event_id):
     return jsonify({"message": "Event deleted successfully"}), 200
 
 
+# =============================================================================
+# DONATIONS  —  Provost / Admin routes
+# Drop these into admin_bp (routes.py) and remove the two old stub routes:
+#   • GET  /donations/pending
+#   • PUT  /donations/<id>/approve
+# =============================================================================
 
+# ---------------------------------------------------------------------------
+# GET  /donations
+# ---------------------------------------------------------------------------
+# Query-string params:
+#   page        int   (default 1)
+#   limit       int   (default 10)
+#   requester   str   "student" | "staff" | "all"  (default "all")
+#   status      str   "Pending" | "Approved" | "Refused" | "all" (default "all")
+# ---------------------------------------------------------------------------
+@admin_bp.route('/donations', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_donations():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    # ── Pagination ──────────────────────────────────────────────────────────
+    try:
+        page  = max(1, int(request.args.get('page',  1)))
+        limit = max(1, min(50, int(request.args.get('limit', 10))))
+    except ValueError:
+        return jsonify({"error": "page and limit must be integers"}), 400
+
+    offset = (page - 1) * limit
+
+    # ── Filters ──────────────────────────────────────────────────────────────
+    requester_filter = request.args.get('requester', 'all').lower()
+    status_filter    = request.args.get('status',    'all')
+
+    valid_requesters = ('all', 'student', 'staff')
+    valid_statuses   = ('all', 'Pending', 'Approved', 'Refused')
+
+    if requester_filter not in valid_requesters:
+        return jsonify({"error": f"requester must be one of {valid_requesters}"}), 400
+    if status_filter not in valid_statuses:
+        return jsonify({"error": f"status must be one of {valid_statuses}"}), 400
+
+    # ── Base query ────────────────────────────────────────────────────────────
+    # ASKS_FOR guarantees that at least one of student_id / staff_id is NOT NULL.
+    # We LEFT JOIN both so a single row carries both potential requester types.
+    base_sql = """
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON af.donation_id = d.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS   sf ON af.staff_id   = sf.staff_id
+        WHERE (st.hall_id = %(hall_id)s OR sf.hall_id = %(hall_id)s)
+    """
+    params = {"hall_id": current_hall_id}
+
+    # ── Dynamic filters ───────────────────────────────────────────────────────
+    if requester_filter == 'student':
+        base_sql += " AND af.student_id IS NOT NULL AND af.staff_id IS NULL"
+    elif requester_filter == 'staff':
+        base_sql += " AND af.staff_id IS NOT NULL AND af.student_id IS NULL"
+
+    if status_filter != 'all':
+        base_sql += " AND d.status = %(status)s"
+        params["status"] = status_filter
+
+    # ── Count query ───────────────────────────────────────────────────────────
+    count_sql    = "SELECT COUNT(*) AS total " + base_sql
+    count_result = execute_read_query(count_sql, params)
+    total_count  = count_result[0]['total'] if count_result else 0
+    total_pages  = max(1, (total_count + limit - 1) // limit)
+
+    # ── Data query ────────────────────────────────────────────────────────────
+    select_sql = """
+        SELECT
+            d.donation_id,
+            d.status,
+            d.description,
+            TO_CHAR(d.start_date, 'YYYY-MM-DD') AS start_date,
+            TO_CHAR(d.end_date,   'YYYY-MM-DD') AS end_date,
+            -- Requester identity
+            CASE
+                WHEN af.student_id IS NOT NULL THEN 'student'
+                ELSE 'staff'
+            END AS requester_type,
+            COALESCE(af.student_id, af.staff_id) AS requester_id,
+            COALESCE(st.name, sf.name)            AS requester_name,
+            COALESCE(st.phone_number, sf.phone_number) AS requester_phone
+    """ + base_sql + """
+        ORDER BY d.start_date DESC, d.donation_id DESC
+        LIMIT %(limit)s OFFSET %(offset)s
+    """
+    params["limit"]  = limit
+    params["offset"] = offset
+
+    donations = execute_read_query(select_sql, params)
+
+    return jsonify({
+        "donations": donations if donations else [],
+        "pagination": {
+            "page":        page,
+            "limit":       limit,
+            "total_items": total_count,
+            "total_pages": total_pages
+        }
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# GET  /donations/<donation_id>
+# ---------------------------------------------------------------------------
+# Returns the full detail of a single donation entry so the frontend can
+# show the expanded view without a separate data fetch if the list already
+# contains all fields — but having this endpoint is cleaner and keeps payloads
+# small in the list view.
+# ---------------------------------------------------------------------------
+@admin_bp.route('/donations/<int:donation_id>', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_donation_detail(donation_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    sql = """
+        SELECT
+            d.donation_id,
+            d.status,
+            d.description,
+            TO_CHAR(d.start_date, 'YYYY-MM-DD') AS start_date,
+            TO_CHAR(d.end_date,   'YYYY-MM-DD') AS end_date,
+            -- Requester identity
+            CASE
+                WHEN af.student_id IS NOT NULL THEN 'student'
+                ELSE 'staff'
+            END AS requester_type,
+            COALESCE(af.student_id, af.staff_id) AS requester_id,
+            COALESCE(st.name, sf.name)            AS requester_name,
+            COALESCE(st.phone_number, sf.phone_number) AS requester_phone,
+            -- Payment info (only present once the donation has generated a payment)
+            p.payment_id,
+            p.payment_type,
+            p.amount,
+            p.status  AS payment_status,
+            TO_CHAR(p.due_time,  'YYYY-MM-DD HH24:MI') AS due_time,
+            TO_CHAR(p.paid_at,   'YYYY-MM-DD HH24:MI') AS paid_at
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON af.donation_id = d.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS   sf ON af.staff_id   = sf.staff_id
+        LEFT JOIN GENERATES g ON g.donation_id  = d.donation_id
+        LEFT JOIN PAYMENTS  p ON p.payment_id   = g.payment_id
+        WHERE d.donation_id = %s
+          AND (st.hall_id = %s OR sf.hall_id = %s)
+    """
+    result = execute_read_query(sql, (donation_id, current_hall_id, current_hall_id))
+
+    if not result:
+        return jsonify({"error": "Donation not found or does not belong to your hall"}), 404
+
+    return jsonify(result[0]), 200
+
+
+# ---------------------------------------------------------------------------
+# PUT  /donations/<donation_id>/status
+# ---------------------------------------------------------------------------
+# Body (JSON):
+#   { "status": "Approved" | "Refused" }
+#
+# One endpoint handles both Approve and Refuse so the frontend has a single
+# contract; the old separate /approve route is superseded by this.
+# ---------------------------------------------------------------------------
+@admin_bp.route('/donations/<int:donation_id>/status', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def update_donation_status(donation_id):
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    data       = request.get_json() or {}
+    new_status = data.get('status', '').strip()
+
+    if new_status not in ('Approved', 'Refused'):
+        return jsonify({"error": "status must be 'Approved' or 'Refused'"}), 400
+
+    # Confirm the donation belongs to this hall and is still Pending
+    verify_sql = """
+        SELECT d.donation_id, d.status
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON af.donation_id = d.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS   sf ON af.staff_id   = sf.staff_id
+        WHERE d.donation_id = %s
+          AND (st.hall_id = %s OR sf.hall_id = %s)
+    """
+    existing = execute_read_query(verify_sql, (donation_id, current_hall_id, current_hall_id))
+
+    if not existing:
+        return jsonify({"error": "Donation not found or does not belong to your hall"}), 404
+
+    if existing[0]['status'] != 'Pending':
+        return jsonify({
+            "error": f"Donation has already been {existing[0]['status'].lower()} and cannot be changed"
+        }), 409
+
+    update_sql = "UPDATE DONATIONS SET status = %s WHERE donation_id = %s"
+    success    = execute_write_query(update_sql, (new_status, donation_id))
+
+    if not success:
+        return jsonify({"error": "Failed to update donation status"}), 500
+
+    action = "approved" if new_status == "Approved" else "refused"
+    return jsonify({
+        "message":     f"Donation request {action} successfully",
+        "donation_id": donation_id,
+        "new_status":  new_status
+    }), 200
