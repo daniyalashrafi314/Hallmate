@@ -1,12 +1,14 @@
 from flask import Blueprint, request, jsonify
 import jwt
 import datetime
-from app.db import execute_read_query # Assuming this is your DB helper
-from app.auth.middleware import SECRET_KEY # Use the same key from your middleware!
+from app.db import execute_read_query 
+from app.auth.middleware import SECRET_KEY, determine_role 
 from app.security.passwords import verify_password
+
 
 auth_bp = Blueprint('auth', __name__)
 
+@auth_bp.route('/login', methods=['POST', 'OPTIONS'])
 @auth_bp.route('/login', methods=['POST', 'OPTIONS'])
 def login():
     # 1. Handle the CORS preflight check
@@ -14,58 +16,36 @@ def login():
         return '', 200
         
     data = request.get_json()
-    email = data.get('email')
+    
+    # --- CHANGED: Extract user_id instead of email ---
+    user_id_input = data.get('user_id') 
     password = data.get('password')
 
-    if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
+    if not user_id_input or not password:
+        return jsonify({'error': 'User ID and password are required'}), 400
 
-    # 2. Query the database for the user
-    # Adjust the column names to match your actual USERS table schema
-    sql = "SELECT user_id, password FROM USERS WHERE email_address = %s"
-    result = execute_read_query(sql, (email,))
+    # --- CHANGED: Query by user_id ---
+    sql = "SELECT user_id, password FROM USERS WHERE user_id = %s"
+    result = execute_read_query(sql, (user_id_input,))
 
-    # 3. Verify credentials against the stored hash
     if not result or not verify_password(result[0]['password'], password):
-        return jsonify({'error': 'Invalid email or password'}), 401
+        return jsonify({'error': 'Invalid User ID or password'}), 401
         
     user_id = result[0]['user_id']
+    
+    # --- CHANGED: Determine role dynamically ---
+    # (Make sure your updated determine_role function is accessible here)
+    user_role = determine_role(user_id)
 
-    # 4. Generate the JWT token
     token = jwt.encode({
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24) # Token lasts 24 hours
+        'role': user_role,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     }, SECRET_KEY, algorithm="HS256")
 
-    # 5. Send the token back to React
     return jsonify({
         'message': 'Login successful',
         'token': token,
-        'user_id': user_id
+        'user_id': user_id,
+        'role': user_role 
     }), 200
-
-
-"""
-@auth_bp.route('/register', methods=['POST', 'OPTIONS'])
-def register():
-    if request.method == 'OPTIONS': return '', 200
-    
-    data = request.get_json()
-    user_id = data.get('user_id')
-    email = data.get('email_address')
-    password = data.get('password')
-
-    # Hash the password securely
-    hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-
-    try:
-        execute_write_query(
-            "INSERT INTO USERS (user_id, email_address, password) VALUES (%s, %s, %s)",
-            (user_id, email, hashed_password)
-        )
-        return jsonify({"message": "User registered successfully!"}), 201
-    except Exception as e:
-        return jsonify({"error": "User already exists or invalid data"}), 400
-
-
-"""

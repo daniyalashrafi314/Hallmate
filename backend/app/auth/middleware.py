@@ -14,17 +14,24 @@ def determine_role(user_id):
         return 'student'
     
     # 2. Check if Staff or Provost (Database Lookup)
-    # Note: We look up by the user_id foreign key in the STAFFS table
     staff_query = "SELECT role FROM STAFFS WHERE user_id = %s"
     staff_record = execute_read_query(staff_query, (user_id,))
     
     if staff_record:
-        # Assuming execute_read_query returns a list of dicts: [{'role': 'Provost'}]
         staff_role = staff_record[0].get('role')
         if staff_role == 'Provost':
-            return 'admin' # (or 'admin', whichever you prefer to call it in backend)
+            return 'admin'
         else:
             return 'staff'
+            
+    # 3. Check if Super Admin (Exists in USERS, but wasn't caught by Student or Staff checks)
+    user_query = "SELECT user_id FROM USERS WHERE user_id = %s"
+    user_record = execute_read_query(user_query, (user_id,))
+    
+    if user_record:
+        return 'super_admin'
+        
+    return 'unknown'
             
     # 3. Check if Super Admin (Exists in USERS, but wasn't caught by Student or Staff checks)
     user_query = "SELECT user_id FROM USERS WHERE user_id = %s"

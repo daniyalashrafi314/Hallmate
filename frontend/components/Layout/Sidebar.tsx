@@ -50,7 +50,11 @@ const Sidebar: React.FC = () => {
       { to: '/users', label: 'Students', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Seat Approvals', icon: ShieldCheck },
+    ],
+    [UserRole.SUPER_ADMIN]: [
+      { to: '/manage-provosts', label: 'Manage Provosts', icon: UserCircle },
     ]
+
   };
 
   // 2. The actual logout handler

@@ -25,6 +25,15 @@ export const THEME_CONFIG = {
     bg: 'bg-[#F0F4F8]',
     accent: 'bg-[#669bbc]',
     hover: 'hover:bg-[#00223a]'
+  },
+  SUPER_ADMIN: {
+    primary: 'bg-[#003049]',
+    secondary: 'bg-[#336683]',
+    text: 'text-[#003049]',
+    border: 'border-[#003049]',
+    bg: 'bg-[#F0F4F8]',
+    accent: 'bg-[#669bbc]',
+    hover: 'hover:bg-[#00223a]'
   }
 };
 

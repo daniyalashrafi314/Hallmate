@@ -2,7 +2,8 @@
 export enum UserRole {
   STUDENT = 'STUDENT',
   STAFF = 'STAFF',
-  PROVOST = 'PROVOST'
+  PROVOST = 'PROVOST',
+  SUPER_ADMIN = 'SUPER_ADMIN'
 }
 
 export interface User {

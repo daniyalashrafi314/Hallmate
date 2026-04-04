@@ -61,6 +61,26 @@ export const useAppContext = () => {
   return context;
 };
 
+const normalizeUserRole = (value: string | null): UserRole | null => {
+  if (!value) return null;
+
+  switch (value.trim().toLowerCase()) {
+    case 'student':
+      return UserRole.STUDENT;
+    case 'staff':
+      return UserRole.STAFF;
+    case 'provost':
+    case 'admin':
+      return UserRole.PROVOST;
+    case 'super_admin':
+    case 'super-admin':
+    case 'super admin':
+      return UserRole.SUPER_ADMIN;
+    default:
+      return null;
+  }
+};
+
 // 2. The Bouncer Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: UserRole[] }) => {
   const { userRole } = useAppContext();
@@ -87,17 +107,16 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 
 const App: React.FC = () => {
   // 3. Initialize state from LocalStorage so sessions persist on refresh
-  const [userRole, setUserRole] = useState<UserRole | null>(
-    (localStorage.getItem('user_role') as UserRole) || null
-  );
+  const storedUserRole = normalizeUserRole(localStorage.getItem('user_role'));
+  const [userRole, setUserRole] = useState<UserRole | null>(storedUserRole);
   
   // In a real app, you might fetch the full user object from the backend using the ID
   const [user, setUser] = useState<User | null>(
-    localStorage.getItem('user_id') ? { id: localStorage.getItem('user_id')!, name: 'Logged In User', email: '', role: userRole || UserRole.STUDENT } : null
+    localStorage.getItem('user_id') ? { id: localStorage.getItem('user_id')!, name: 'Logged In User', email: '', role: storedUserRole || UserRole.STUDENT } : null
   );
 
   // Default theme to Student if not logged in just for the login screen styling
-  const theme = THEME_CONFIG[userRole || UserRole.STUDENT];
+  const theme = THEME_CONFIG[userRole ?? UserRole.STUDENT] ?? THEME_CONFIG[UserRole.STUDENT];
 
   // Auth Functions
   const login = (token: string, userId: string, role: UserRole) => {
