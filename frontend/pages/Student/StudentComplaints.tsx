@@ -272,8 +272,9 @@ const StudentComplaints: React.FC = () => {
                     <option value="Room">Room / Furniture</option>
                     <option value="Dining">Dining</option>
                     <option value="Toilet">Toilet / Plumbing</option>
-                    <option value="Facilities">Hall Facilities</option>
+                    <option value="Roommate">Roommate Issues</option>
                     <option value="Staff">Staff Issue</option>
+                    <option value="Facilities">Hall Facilities</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>

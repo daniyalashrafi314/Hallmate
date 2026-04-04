@@ -1427,3 +1427,316 @@ def update_donation_status(donation_id):
         "donation_id": donation_id,
         "new_status":  new_status
     }), 200
+
+#Complaints
+
+
+@admin_bp.route('/complaints', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_all_complaints():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+ 
+    # ── Pagination ──────────────────────────────────────────────────────────
+    try:
+        page  = max(1, int(request.args.get('page',  1)))
+        limit = max(1, min(50, int(request.args.get('limit', 10))))
+    except ValueError:
+        return jsonify({"error": "page and limit must be integers"}), 400
+ 
+    offset = (page - 1) * limit
+ 
+    # ── Filters ──────────────────────────────────────────────────────────────
+    status_filter     = request.args.get('status',     'all')
+    type_filter       = request.args.get('type',       'all')
+    visibility_filter = request.args.get('visibility', 'all')
+    sort_by           = request.args.get('sort',       'newest')
+ 
+    valid_statuses    = ('all', 'Pending', 'Resolved', 'Dismissed')
+    valid_types       = ('all', 'Room', 'Dining', 'Toilet', 'Roommate', 'Staff', 'Facilities', 'Other')
+    valid_visibilities = ('all', 'public', 'private')
+    valid_sorts       = ('newest', 'oldest', 'upvotes')
+ 
+    if status_filter not in valid_statuses:
+        return jsonify({"error": f"status must be one of {valid_statuses}"}), 400
+    if type_filter not in valid_types:
+        return jsonify({"error": f"type must be one of {valid_types}"}), 400
+    if visibility_filter not in valid_visibilities:
+        return jsonify({"error": f"visibility must be one of {valid_visibilities}"}), 400
+    if sort_by not in valid_sorts:
+        return jsonify({"error": f"sort must be one of {valid_sorts}"}), 400
+ 
+    # ── Dynamic WHERE clauses ─────────────────────────────────────────────────
+    # Hall scoping is mandatory — provost only sees their own hall.
+    where_clauses = ["s.hall_id = %s"]
+    params        = [current_hall_id]
+ 
+    if status_filter != 'all':
+        where_clauses.append("c.status = %s")
+        params.append(status_filter)
+ 
+    if type_filter != 'all':
+        where_clauses.append("c.complaint_type = %s")
+        params.append(type_filter)
+ 
+    if visibility_filter == 'public':
+        where_clauses.append("c.is_public = TRUE")
+    elif visibility_filter == 'private':
+        where_clauses.append("c.is_public = FALSE")
+ 
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+ 
+    # ── Sort order ────────────────────────────────────────────────────────────
+    order_map = {
+        "newest":  "c.date DESC,  c.complaint_id DESC",
+        "oldest":  "c.date ASC,   c.complaint_id ASC",
+        "upvotes": "upvote_count DESC, c.date DESC",
+    }
+    order_sql = order_map[sort_by]
+ 
+    # ── Base fragment (reused for count + data query) ─────────────────────────
+    # Upvote count is always computed so the list can display it regardless
+    # of whether the complaint is public.
+    # Identity: real name only when is_anonymous = FALSE.
+    base_fragment = """
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        LEFT JOIN (
+            SELECT complaint_id, COUNT(*) AS upvote_count
+            FROM COMPLAINT_UPVOTES
+            GROUP BY complaint_id
+        ) uv ON uv.complaint_id = c.complaint_id
+        {where_sql}
+    """.format(where_sql=where_sql)
+ 
+    # ── Count query ───────────────────────────────────────────────────────────
+    count_sql    = "SELECT COUNT(*) AS total " + base_fragment
+    count_result = execute_read_query(count_sql, tuple(params))
+    total_count  = count_result[0]['total'] if count_result else 0
+    total_pages  = max(1, (total_count + limit - 1) // limit)
+ 
+    # ── Data query ────────────────────────────────────────────────────────────
+    select_sql = """
+        SELECT
+            c.complaint_id,
+            c.complaint_type                                  AS type,
+            c.status,
+            c.is_public,
+            c.is_anonymous,
+            TO_CHAR(c.date, 'YYYY-MM-DD')                    AS date,
+            -- Mask identity when the student chose anonymity
+            CASE
+                WHEN c.is_anonymous THEN 'Anonymous Resident'
+                ELSE s.name
+            END                                               AS author_name,
+            -- Never expose the real student_id for anonymous complaints
+            CASE
+                WHEN c.is_anonymous THEN NULL
+                ELSE c.student_id
+            END                                               AS student_id,
+            COALESCE(uv.upvote_count, 0)                     AS upvote_count,
+            -- Truncated description for list card (full text in detail endpoint)
+            LEFT(c.description, 160)                          AS description_preview,
+            (LENGTH(c.description) > 160)                    AS is_truncated
+    """ + base_fragment + """
+        ORDER BY {order_sql}
+        LIMIT %s OFFSET %s
+    """.format(order_sql=order_sql)
+ 
+    data_params = tuple(params) + (limit, offset)
+    complaints  = execute_read_query(select_sql, data_params)
+ 
+    return jsonify({
+        "complaints": complaints if complaints else [],
+        "pagination": {
+            "page":        page,
+            "limit":       limit,
+            "total_items": total_count,
+            "total_pages": total_pages
+        }
+    }), 200
+ 
+ 
+# ---------------------------------------------------------------------------
+# GET  /complaints/<complaint_id>
+# ---------------------------------------------------------------------------
+# Full detail for the expanded view.
+# Also returns the list of upvoters (student_id only) so the frontend can
+# show "12 students supported this" without exposing names.
+# ---------------------------------------------------------------------------
+@admin_bp.route('/complaints/<int:complaint_id>', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_complaint_detail(complaint_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+ 
+    sql = """
+        SELECT
+            c.complaint_id,
+            c.complaint_type                                    AS type,
+            c.description,
+            c.status,
+            c.is_public,
+            c.is_anonymous,
+            TO_CHAR(c.date, 'YYYY-MM-DD')                      AS date,
+            CASE
+                WHEN c.is_anonymous THEN 'Anonymous Resident'
+                ELSE s.name
+            END                                                 AS author_name,
+            CASE
+                WHEN c.is_anonymous THEN NULL
+                ELSE c.student_id
+            END                                                 AS student_id,
+            CASE
+                WHEN c.is_anonymous THEN NULL
+                ELSE s.phone_number
+            END                                                 AS author_phone,
+            COALESCE(get_department_name(
+                CASE WHEN c.is_anonymous THEN NULL ELSE c.student_id END
+            ), '')                                              AS author_department,
+            -- Upvote summary
+            (
+                SELECT COUNT(*)
+                FROM COMPLAINT_UPVOTES cu
+                WHERE cu.complaint_id = c.complaint_id
+            )                                                   AS upvote_count
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        WHERE c.complaint_id = %s
+          AND s.hall_id = %s
+    """
+    result = execute_read_query(sql, (complaint_id, current_hall_id))
+ 
+    if not result:
+        return jsonify({"error": "Complaint not found or does not belong to your hall"}), 404
+ 
+    return jsonify(result[0]), 200
+ 
+ 
+# ---------------------------------------------------------------------------
+# PUT  /complaints/<complaint_id>/status
+# ---------------------------------------------------------------------------
+# Body (JSON):
+#   { "status": "Resolved" | "Dismissed" }
+#
+# Only Pending complaints can be actioned.
+# Once Resolved or Dismissed the status is locked to prevent accidental
+# re-flagging (return 409 if already processed).
+# ---------------------------------------------------------------------------
+@admin_bp.route('/complaints/<int:complaint_id>/status', methods=['PUT', 'OPTIONS'])
+@token_required(allowed_roles=['admin'])
+def update_complaint_status(complaint_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+ 
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+ 
+    data       = request.get_json() or {}
+    new_status = data.get('status', '').strip()
+ 
+    if new_status not in ('Resolved', 'Dismissed'):
+        return jsonify({"error": "status must be 'Resolved' or 'Dismissed'"}), 400
+ 
+    # ── Ownership + current-status check (single query) ───────────────────────
+    verify_sql = """
+        SELECT c.complaint_id, c.status
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        WHERE c.complaint_id = %s
+          AND s.hall_id = %s
+    """
+    existing = execute_read_query(verify_sql, (complaint_id, current_hall_id))
+ 
+    if not existing:
+        return jsonify({"error": "Complaint not found or does not belong to your hall"}), 404
+ 
+    current_status = existing[0]['status']
+    if current_status != 'Pending':
+        return jsonify({
+            "error": f"Complaint has already been {current_status.lower()} and cannot be changed"
+        }), 409
+ 
+    # ── Update ────────────────────────────────────────────────────────────────
+    update_sql = "UPDATE COMPLAINTS SET status = %s WHERE complaint_id = %s"
+    success    = execute_write_query(update_sql, (new_status, complaint_id))
+ 
+    if not success:
+        return jsonify({"error": "Failed to update complaint status"}), 500
+ 
+    action = new_status.lower()
+    return jsonify({
+        "message":      f"Complaint marked as {action}",
+        "complaint_id": complaint_id,
+        "new_status":   new_status
+    }), 200
+ 
+ 
+# ---------------------------------------------------------------------------
+# GET  /complaints/summary
+# ---------------------------------------------------------------------------
+# Lightweight stats card for a dashboard widget — total counts per status
+# and per type, scoped to the current hall.
+# No pagination needed; this is always a single aggregated response.
+# ---------------------------------------------------------------------------
+@admin_bp.route('/complaints/summary', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_complaints_summary():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+ 
+    # ── Status breakdown ──────────────────────────────────────────────────────
+    status_sql = """
+        SELECT
+            c.status,
+            COUNT(*) AS count
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        WHERE s.hall_id = %s
+        GROUP BY c.status
+    """
+    status_rows = execute_read_query(status_sql, (current_hall_id,))
+    status_counts = {row['status']: row['count'] for row in (status_rows or [])}
+ 
+    # ── Type breakdown ────────────────────────────────────────────────────────
+    type_sql = """
+        SELECT
+            c.complaint_type AS type,
+            COUNT(*)         AS count
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        WHERE s.hall_id = %s
+        GROUP BY c.complaint_type
+        ORDER BY count DESC
+    """
+    type_rows = execute_read_query(type_sql, (current_hall_id,))
+ 
+    # ── Most upvoted public complaint ─────────────────────────────────────────
+    top_sql = """
+        SELECT
+            c.complaint_id,
+            c.complaint_type  AS type,
+            LEFT(c.description, 120) AS description_preview,
+            TO_CHAR(c.date, 'YYYY-MM-DD') AS date,
+            COUNT(cu.student_id) AS upvote_count
+        FROM COMPLAINTS c
+        JOIN STUDENTS s          ON c.student_id  = s.student_id
+        LEFT JOIN COMPLAINT_UPVOTES cu ON cu.complaint_id = c.complaint_id
+        WHERE s.hall_id = %s
+          AND c.is_public = TRUE
+          AND c.status    = 'Pending'
+        GROUP BY c.complaint_id, c.complaint_type, c.description, c.date
+        ORDER BY upvote_count DESC, c.date DESC
+        LIMIT 1
+    """
+    top_result = execute_read_query(top_sql, (current_hall_id,))
+ 
+    return jsonify({
+        "by_status": {
+            "Pending":   status_counts.get('Pending',   0),
+            "Resolved":  status_counts.get('Resolved',  0),
+            "Dismissed": status_counts.get('Dismissed', 0),
+        },
+        "by_type":         type_rows if type_rows else [],
+        "top_upvoted":     top_result[0] if top_result else None
+    }), 200

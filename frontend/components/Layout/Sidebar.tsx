@@ -48,6 +48,7 @@ const Sidebar: React.FC = () => {
       { to: '/forum', label: 'Forum', icon: MessageSquare },
       { to: '/tasks', label: 'Tasks', icon: ListTodo },
       { to: '/donations', label: 'Donations', icon: Heart },
+      { to: '/complaints', label: 'Complaints', icon: FileText },
       { to: '/users', label: 'Staff Management', icon: Users },
       { to: '/students', label: 'Student Management', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },

@@ -37,6 +37,7 @@ import ProvostProfile from './pages/Provost/ProvostProfile';
 import ProvostForum from './pages/Provost/ProvostForum';
 import StaffEvents from './pages/Staff/StaffEvents';
 import ProvostEvents from './pages/Provost/ProvostEvents';
+import ProvostComplaints from './pages/Provost/ProvostComplaints';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
@@ -188,7 +189,16 @@ const App: React.FC = () => {
                                 : <ProvostDonations />
                           }
                         />
-                        <Route path="/complaints" element={<StudentComplaints />} />
+                        <Route
+                          path="/complaints"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentComplaints />
+                              : userRole === UserRole.PROVOST
+                                ? <ProvostComplaints />
+                                : <Navigate to="/dashboard" replace />
+                          }
+                        />
                         <Route
                           path="/events"
                           element={
