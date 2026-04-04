@@ -19,8 +19,18 @@ interface Notification {
 const NotificationBell: React.FC = () => {
   const { userRole } = useAppContext();
 
-  // Don't show notification bell for SUPER_USER (admin)
-  if (userRole === UserRole.SUPER_USER) {
+  // Hide notifications for admin/provost and super user.
+  if (userRole === UserRole.SUPER_USER || userRole === UserRole.PROVOST) {
+    return null;
+  }
+
+  const apiEndpoint = userRole === UserRole.STUDENT
+    ? 'http://localhost:5000/student/notifications'
+    : userRole === UserRole.STAFF
+      ? 'http://localhost:5000/staff/notifications'
+      : null;
+
+  if (!apiEndpoint) {
     return null;
   }
 
@@ -28,20 +38,6 @@ const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  const getApiEndpoint = () => {
-    switch (userRole) {
-      case UserRole.STUDENT:
-        return 'http://localhost:5000/student/notifications';
-      case UserRole.STAFF:
-        return 'http://localhost:5000/staff/notifications';
-      case UserRole.PROVOST:
-        return 'http://localhost:5000/staff/notifications'; // Provosts use staff endpoint
-      default:
-        // This should not happen since SUPER_USER is handled above, but fallback to student
-        return 'http://localhost:5000/student/notifications';
-    }
-  };
 
   const token = localStorage.getItem('hallmate_token');
 
@@ -63,7 +59,7 @@ const NotificationBell: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch(getApiEndpoint(), {
+      const response = await fetch(apiEndpoint, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -99,7 +95,7 @@ const NotificationBell: React.FC = () => {
 
     // 3. Update Backend
     try {
-      await fetch(`${getApiEndpoint()}/${notification.id}/read`, {
+      await fetch(`${apiEndpoint}/${notification.id}/read`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -113,7 +109,7 @@ const NotificationBell: React.FC = () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     
     try {
-      await fetch(`${getApiEndpoint()}/read-all`, {
+      await fetch(`${apiEndpoint}/read-all`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });

@@ -172,9 +172,9 @@ BEGIN
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
         VALUES (
             NEW.student_id, 
-            'Seat Application ' || NEW.status, 
-            'Your application for a hall seat has been ' || LOWER(NEW.status) || '.', 
-            'SEAT APPLICATION', -- Updated to match your ENUM spacing
+            'Seat Application ' || NEW.status::text,
+            'Your application for a hall seat has been ' || LOWER(NEW.status::text) || '.',
+            'SEAT APPLICATION'::notification_type,
             '/student/profile'
         );
     END IF;

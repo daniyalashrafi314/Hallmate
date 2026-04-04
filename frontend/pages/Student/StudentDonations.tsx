@@ -160,7 +160,7 @@ const StudentDonations: React.FC = () => {
         },
         body: JSON.stringify({
           pledgeAmount: Number(payAmount),
-          donorId: user?.id // Note: The backend can now pull this from the token instead!
+          donorId: user?.id 
         }),
       });
 
@@ -421,6 +421,65 @@ const StudentDonations: React.FC = () => {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* Donation Payment Modal */}
+      {payModalFor && (
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 text-lg">Pledge Donation</h3>
+              <button
+                onClick={() => {
+                  setPayModalFor(null);
+                  setPayAmount('');
+                }}
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <p className="text-sm text-gray-500">Requester</p>
+                <p className="font-bold text-gray-800">{payModalFor.requesterName} ({payModalFor.requesterId})</p>
+                <p className="text-sm text-gray-600 mt-2">{payModalFor.description}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Amount (BDT)</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setPayModalFor(null);
+                    setPayAmount('');
+                  }}
+                  className="px-4 py-2 font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePledgeDonation}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-white font-bold bg-green-600 hover:bg-green-700 transition-colors shadow-md"
+                >
+                  <Heart className="w-4 h-4" /> Confirm Pledge
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

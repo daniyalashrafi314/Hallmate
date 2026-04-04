@@ -45,7 +45,7 @@ def token_required(allowed_roles=None):
         def decorated(*args, **kwargs):
             # 1. Allow CORS Preflight checks to pass
             if request.method == 'OPTIONS':
-                return f(*args, **kwargs)
+                return '', 200
 
             # 2. Extract Token
             token = None

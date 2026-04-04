@@ -498,6 +498,7 @@ def get_all_seat_applications():
             sa.date
         FROM SEAT_APPLICATION sa
         JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE s.hall_id = %s
         ORDER BY 
             CASE sa.status 
                 WHEN 'Pending' THEN 1 
@@ -508,22 +509,33 @@ def get_all_seat_applications():
             CAST(SUBSTRING(sa.student_id FROM 1 FOR 2) AS INT) ASC
     """
 
-    return jsonify(execute_read_query(sql)), 200
+    return jsonify(execute_read_query(sql, (current_hall_id,))), 200
 
 @admin_bp.route('/seat-approvals/<int:app_id>/status', methods=['PUT', 'OPTIONS'])
 @token_required(allowed_roles=['admin'])
 def update_seat_approval_status(app_id):
-    current_admin_id = request.current_user_id
-    current_hall_id  = get_current_hall_id(current_admin_id)
-    # Handle CORS Preflight
+    # Handle CORS Preflight before accessing auth-scoped request fields.
     if request.method == 'OPTIONS':
         return '', 200
+
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
         
-    data = request.get_json()
+    data = request.get_json() or {}
     new_status = data.get('status') 
     
     if new_status not in ['Approved', 'Refused']:
         return jsonify({"error": "Invalid status"}), 400
+
+    verify_sql = """
+        SELECT 1
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE sa.application_id = %s
+          AND s.hall_id = %s
+    """
+    if not execute_read_query(verify_sql, (app_id, current_hall_id)):
+        return jsonify({"error": "Seat application not found in your hall"}), 404
 
     sql = "UPDATE SEAT_APPLICATION SET status = %s WHERE application_id = %s"
     if execute_write_query(sql, (new_status, app_id)):
