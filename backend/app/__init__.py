@@ -25,6 +25,9 @@ def create_app():
     from app.admin.forum_routes import admin_forum_bp
     app.register_blueprint(admin_forum_bp, url_prefix='/admin')
 
+    from app.super_user.routes import super_user_bp
+    app.register_blueprint(super_user_bp, url_prefix='/super-user')
+
     from app.auth.routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')
 

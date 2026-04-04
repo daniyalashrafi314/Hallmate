@@ -45,6 +45,7 @@ import ProvostUserManagement from './pages/Provost/ProvostUserManagement';
 import ProvostSeatApprovals from './pages/Provost/ProvostSeatApprovals';
 import ProvostTasks from './pages/Provost/ProvostTasks';
 import ProvostDashboard from './pages/Provost/ProvostDashboard';
+import ManageProvosts from './pages/SuperUser/ManageProvosts';
 
 // 1. Update Context to handle actual Authentication state
 interface AppContextType {
@@ -74,10 +75,13 @@ const normalizeUserRole = (value: string | null): UserRole | null => {
     case 'provost':
     case 'admin':
       return UserRole.PROVOST;
+    case 'super_user':
+    case 'super-user':
+    case 'super user':
     case 'super_admin':
     case 'super-admin':
     case 'super admin':
-      return UserRole.SUPER_ADMIN;
+      return UserRole.SUPER_USER;
     default:
       return null;
   }
@@ -164,7 +168,9 @@ const App: React.FC = () => {
                               ? <StudentHome />
                               : userRole === UserRole.STAFF
                                 ? <StaffDashboard />
-                                : <ProvostDashboard />
+                                : userRole === UserRole.PROVOST
+                                  ? <ProvostDashboard />
+                                  : <ManageProvosts />
                           }
                         />
                         <Route path="/seat-application" element={<StudentSeatApplication />} />
@@ -235,6 +241,7 @@ const App: React.FC = () => {
                         <Route path="/users" element={<ProvostUserManagement />} />
                         <Route path="/students" element={<ProvostStudentManagement />} />
                         <Route path="/approvals" element={<ProvostSeatApprovals />} />
+                        <Route path="/manage-provosts" element={userRole === UserRole.SUPER_USER ? <ManageProvosts /> : <Navigate to="/dashboard" replace />} />
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
                       </Routes>

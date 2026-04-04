@@ -41,10 +41,13 @@ const Login: React.FC = () => {
             case 'provost':
             case 'admin':
               return UserRole.PROVOST;
+            case 'super_user':
+            case 'super-user':
+            case 'super user':
             case 'super_admin':
             case 'super-admin':
             case 'super admin':
-              return UserRole.SUPER_ADMIN;
+              return UserRole.SUPER_USER;
             default:
               return UserRole.STUDENT;
           }
@@ -56,8 +59,8 @@ const Login: React.FC = () => {
         login(data.token, data.user_id, userRole);
 
         // Based on App.tsx, everyone shares the /dashboard route except Super Admin
-        if (userRole === UserRole.SUPER_ADMIN) {
-          navigate('/super-admin-dashboard');
+        if (userRole === UserRole.SUPER_USER) {
+          navigate('/manage-provosts');
         } else {
           navigate('/dashboard'); 
         }

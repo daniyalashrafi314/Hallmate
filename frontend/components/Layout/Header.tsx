@@ -2,11 +2,12 @@
 import React from 'react';
 import { Menu } from 'lucide-react';
 import { useAppContext } from '../../App';
+import { UserRole } from '../../types';
 import { format } from 'date-fns';
 import NotificationBell from './NotificationBell';
 
 const Header: React.FC = () => {
-  const { theme } = useAppContext();
+  const { theme, userRole } = useAppContext();
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 sticky top-0 z-40">
@@ -21,7 +22,7 @@ const Header: React.FC = () => {
           </p>
         </div>
 
-        <NotificationBell/>
+        {userRole !== UserRole.SUPER_USER && <NotificationBell />}
         
       </div>
     </header>
