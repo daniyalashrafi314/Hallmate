@@ -158,10 +158,18 @@ def get_student_dashboard():
     current_student_id = request.current_user_id
 
     # 1. Profile & Allocation Info
+    # CHANGED: Added LEFT JOIN with STAFFS table to fetch the provost's name using provost_id
     profile_sql = """
-        SELECT s.status, s.name, h.name as hall_name, h.provost, a.room_id, a.seat_number
+        SELECT 
+            s.status, 
+            s.name, 
+            h.name as hall_name, 
+            st.name as provost, 
+            a.room_id, 
+            a.seat_number
         FROM STUDENTS s
         JOIN HALLS h ON s.hall_id = h.hall_id
+        LEFT JOIN STAFFS st ON h.provost_id = st.staff_id
         LEFT JOIN ALLOCATIONS a ON s.student_id = a.student_id AND a.end_date IS NULL
         WHERE s.student_id = %s
     """

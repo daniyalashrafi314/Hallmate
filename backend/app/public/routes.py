@@ -14,7 +14,12 @@ def get_landing_data():
         
         # 2. Get Stats
         rooms_count = execute_read_query("SELECT COUNT(*) as count FROM ROOMS WHERE hall_id = %s", (hid,))
-        students_count = execute_read_query("SELECT COUNT(*) as count FROM STUDENTS WHERE hall_id = %s", (hid,))
+        
+        # CHANGED HERE: Added AND status = 'Resident' 
+        students_count = execute_read_query(
+            "SELECT COUNT(*) as count FROM STUDENTS WHERE hall_id = %s AND status = 'Resident'", 
+            (hid,)
+        )
         
         # 3. Get Upcoming Events (filtering out past events)
         events = execute_read_query("""
@@ -25,7 +30,6 @@ def get_landing_data():
         """, (hid,))
         
         # 4. Get Public Notices 
-        # (Assuming notices are global. If they are tied to a hall, add 'AND hall_id = %s')
         notices = execute_read_query("""
             SELECT title, description, date 
             FROM NOTICES 

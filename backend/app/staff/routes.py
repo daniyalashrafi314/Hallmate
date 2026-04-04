@@ -196,6 +196,7 @@ def get_dashboard():
 def get_profile():
     current_staff_id = request.current_user_id
     
+    # CHANGED: Added LEFT JOIN STAFFS pr to fetch the provost's name
     sql = """
         SELECT 
         s.staff_id,
@@ -204,12 +205,13 @@ def get_profile():
         s.role,
         s.hall_id,
         h.name AS hall_name,
-        h.provost,
+        pr.name AS provost,
         u.email_address,
         (s.photo IS NOT NULL) AS has_photo
         FROM STAFFS s
         JOIN USERS u ON s.user_id = u.user_id
         JOIN HALLS h ON s.hall_id = h.hall_id
+        LEFT JOIN STAFFS pr ON h.provost_id = pr.staff_id
         WHERE s.staff_id = %s
     """
     profile = execute_read_query(sql, (current_staff_id,))
@@ -267,6 +269,7 @@ def edit_profile():
         
     staff_update_values.append(current_staff_id)
 
+    # 1. Update STAFFS table (This automatically handles the Provost name change everywhere!)
     sql1 = f"""
             UPDATE STAFFS
             SET {', '.join(staff_update_fields)}
@@ -274,6 +277,7 @@ def edit_profile():
             """
     execute_write_query(sql1, tuple(staff_update_values))
     
+    # 2. Update USERS table
     sql2 = """
         UPDATE USERS
         SET email_address = %s
@@ -284,24 +288,9 @@ def edit_profile():
         )"""
     execute_write_query(sql2, (email, current_staff_id))
     
-    sql3 = """
-        SELECT role, hall_id
-        FROM STAFFS
-        WHERE staff_id = %s
-        """
-    result = execute_read_query(sql3, (current_staff_id,)) 
-    
-    if result:
-        role = result[0]["role"]
-        hall_id = result[0]["hall_id"]
-
-        if role and role.lower() == "provost":
-            sql4 = """
-            UPDATE HALLS
-            SET provost = %s
-            WHERE hall_id = %s
-            """
-            execute_write_query(sql4, (name, hall_id))
+    # CHANGED: We completely removed sql3 and sql4 here! 
+    # Because HALLS now stores the foreign key provost_id, it will dynamically fetch 
+    # the new name we just saved in sql1.
 
     return jsonify({"message": "Profile updated successfully"}), 200
 
