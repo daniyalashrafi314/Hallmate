@@ -97,10 +97,10 @@ const Sidebar: React.FC = () => {
       <div className="p-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <ShieldCheck className="w-8 h-8" />
-          UniHall
+          HALLMATE
         </h1>
         <p className="text-xs opacity-60 mt-1 uppercase tracking-widest font-semibold">
-          HMS Management
+          BUET HALL MANAGEMENT
         </p>
       </div>
 
