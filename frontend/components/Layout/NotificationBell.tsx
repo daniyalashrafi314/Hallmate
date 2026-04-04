@@ -17,11 +17,17 @@ interface Notification {
 }
 
 const NotificationBell: React.FC = () => {
+  const { userRole } = useAppContext();
+
+  // Don't show notification bell for SUPER_USER (admin)
+  if (userRole === UserRole.SUPER_USER) {
+    return null;
+  }
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const { userRole } = useAppContext();
 
   const getApiEndpoint = () => {
     switch (userRole) {
@@ -29,7 +35,10 @@ const NotificationBell: React.FC = () => {
         return 'http://localhost:5000/student/notifications';
       case UserRole.STAFF:
         return 'http://localhost:5000/staff/notifications';
+      case UserRole.PROVOST:
+        return 'http://localhost:5000/staff/notifications'; // Provosts use staff endpoint
       default:
+        // This should not happen since SUPER_USER is handled above, but fallback to student
         return 'http://localhost:5000/student/notifications';
     }
   };
