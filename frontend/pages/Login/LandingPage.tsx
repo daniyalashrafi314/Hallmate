@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Users, Building, Bell, Phone, Mail, MapPin, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import hall1img from './1.jpg';
+
 import hall2img from './2.jpg';
 import hall3img from './3.jpg';
 import hall4img from './4.jpg';
 import hall5img from './5.jpg';
 import hall6img from './6.jpg';
 import hall7img from './7.jpg';
+import hall8img from './8.jpg';
 
 interface HallData {
   hall_id: number;
@@ -20,13 +21,13 @@ interface HallData {
 
 // HARDCODED IMAGES: Map hall_ids to your local jpeg files
 const HALL_IMAGES: Record<number, string> = {
-  1: hall1img,
   2: hall2img,
   3: hall3img,
   4: hall4img,
   5: hall5img,
   6: hall6img,
-  7: hall7img
+  7: hall7img,
+  8: hall8img
 };
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=2000';
