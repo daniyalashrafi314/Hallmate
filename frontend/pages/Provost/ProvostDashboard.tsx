@@ -170,6 +170,9 @@ const ProvostDashboard: React.FC = () => {
             <h3 className={`text-lg font-semibold ${theme.text}`}>Quick Actions</h3>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link to="/users" className={`px-4 py-2 rounded-lg text-sm font-medium ${theme.secondary} text-white`}>
+                Staff Management
+              </Link>
+              <Link to="/students" className={`px-4 py-2 rounded-lg text-sm font-medium border ${theme.border} ${theme.text}`}>
                 Student Management
               </Link>
               <Link to="/rooms" className={`px-4 py-2 rounded-lg text-sm font-medium border ${theme.border} ${theme.text}`}>

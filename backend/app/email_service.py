@@ -58,3 +58,19 @@ def send_student_deletion_email(receiver_email, student_id, student_name=None, h
     If you believe this was done in error, please contact your hall office.
     """
     return _send_email(receiver_email, subject, body)
+
+
+def send_staff_deletion_email(receiver_email, staff_id, staff_name=None, hall_name=None):
+    subject = "Hall Management System - Staff Account Removed"
+    display_name = staff_name or "Staff"
+    hall_line = f"Hall: {hall_name}\n" if hall_name else ""
+    body = f"""
+    Hello {display_name},
+
+    Your Hall Management System staff account has been removed by hall administration.
+
+    Staff ID: {staff_id}
+    {hall_line}
+    If you believe this was done in error, please contact your hall office.
+    """
+    return _send_email(receiver_email, subject, body)

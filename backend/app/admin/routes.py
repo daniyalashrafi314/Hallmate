@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, Response
 from datetime import datetime, date
 from app.db import execute_read_query, execute_write_query
 from app.auth.middleware import token_required
-from app.email_service import send_welcome_email, send_student_deletion_email
+from app.email_service import send_welcome_email, send_student_deletion_email, send_staff_deletion_email
 from app.security.passwords import hash_password
 import re
 import secrets
@@ -769,16 +769,23 @@ def delete_staff(staff_id):
     current_admin_id = request.current_user_id
     current_hall_id  = get_current_hall_id(current_admin_id)
 
-    # 1. Verify the staff exists in THIS provost's hall and grab their user_id
+    # 1. Verify the staff exists in THIS provost's hall and grab data needed for deletion email
     verify_sql = """
-        SELECT user_id FROM STAFFS
-        WHERE staff_id = %s AND hall_id = %s
+        SELECT s.user_id, s.name AS staff_name, u.email_address, h.name AS hall_name
+        FROM STAFFS s
+        JOIN USERS u ON s.user_id = u.user_id
+        JOIN HALLS h ON s.hall_id = h.hall_id
+        WHERE s.staff_id = %s
+          AND s.hall_id = %s
     """
     result = execute_read_query(verify_sql, (staff_id, current_hall_id))
     if not result:
         return jsonify({"error": "Staff member not found in your hall"}), 404
 
     user_id = result[0]['user_id']
+    staff_name = result[0].get('staff_name')
+    staff_email = result[0].get('email_address')
+    hall_name = result[0].get('hall_name')
 
     # 2. Deleting the USERS row is all that's needed now.
     #    STAFFS cascades from USERS, which then cascades further:
@@ -789,10 +796,68 @@ def delete_staff(staff_id):
         (user_id,)
     )
 
+    email_sent = False
+    if staff_email:
+        email_sent = send_staff_deletion_email(staff_email, staff_id, staff_name, hall_name)
+
+    message = f"Staff {staff_id} and all associated records deleted successfully"
+    if not email_sent:
+        message += ". Warning: deletion email could not be sent."
+
     return jsonify({
-        "message": f"Staff {staff_id} and all associated records deleted successfully"
+        "message": message,
+        "staff_id": staff_id,
+        "email_sent": email_sent
     }), 200
 
+@admin_bp.route('/staffs', methods=['POST'])
+@token_required(allowed_roles=['admin'])
+def add_staff():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    data         = request.get_json() or {}
+    staff_id     = data.get('staff_id')
+    email        = data.get('email_address')
+    name         = data.get('name')
+    phone_number = data.get('phone_number')
+
+    if not staff_id or not email or not name or not phone_number:
+        return jsonify({"error": "Missing required fields: staff_id, email_address, name, phone_number"}), 400
+
+    if not re.fullmatch(r'^[A-Za-z0-9]{10}$', str(staff_id)):
+        return jsonify({"error": "staff_id must be exactly 10 alphanumeric characters"}), 400
+
+    alphabet     = string.ascii_letters + string.digits + "!@#$%^&*"
+    raw_password = ''.join(secrets.choice(alphabet) for _ in range(10))
+    hashed_pw    = hash_password(raw_password)
+
+    try:
+        execute_write_query(
+            "INSERT INTO USERS (user_id, email_address, password) VALUES (%s, %s, %s)",
+            (staff_id, email, hashed_pw)
+        )
+        execute_write_query(
+            """
+            INSERT INTO STAFFS (staff_id, hall_id, user_id, name, phone_number, role)
+            VALUES (%s, %s, %s, %s, %s, 'Staff')
+            """,
+            (staff_id, current_hall_id, staff_id, name, phone_number)
+        )
+    except Exception:
+        return jsonify({"error": "Staff member may already exist."}), 409
+
+    email_sent = send_welcome_email(email, staff_id, raw_password)
+
+    message = "Staff added successfully."
+    if not email_sent:
+        message += " Warning: Welcome email failed to send. Please distribute credentials manually."
+
+    return jsonify({
+        "message":   message,
+        "staff_id":  staff_id,
+        "email_sent": email_sent
+    }), 201
 # --- 8) STUDENT LIST & SEARCH ---
 
 # --- STUDENT LIST (sub-page on add-students) ---

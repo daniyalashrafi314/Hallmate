@@ -3,6 +3,7 @@ import { useAppContext } from '../../App';
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   Mail,
@@ -11,7 +12,8 @@ import {
   Search,
   Trash2,
   UserCircle2,
-  Users
+  Users,
+  X
 } from 'lucide-react';
 
 interface StaffListItem {
@@ -38,24 +40,37 @@ interface StaffDetail {
   name: string;
   role: string;
   phone_number: string;
-  salary: number;
+  salary: number | null;
   email_address: string;
   hall_name: string;
   has_photo: boolean;
 }
 
+interface AddStaffFormData {
+  staff_id: string;
+  email_address: string;
+  name: string;
+  phone_number: string;
+}
+
+interface AddStaffResponse {
+  message: string;
+  staff_id: string;
+  email_sent: boolean;
+}
+
 const API_BASE_URL = 'http://localhost:5000/admin';
 const DEFAULT_LIMIT = 10;
 
-const ProvostUserManagement: React.FC = () => {
+const StaffListTab: React.FC<{ refreshToken: number }> = ({ refreshToken }) => {
   const { theme } = useAppContext();
 
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
-
   const [staffs, setStaffs] = useState<StaffListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,6 +87,9 @@ const ProvostUserManagement: React.FC = () => {
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   const initials = useMemo(() => {
     if (!selectedStaff?.name) return 'ST';
@@ -170,7 +188,7 @@ const ProvostUserManagement: React.FC = () => {
 
   useEffect(() => {
     fetchStaffs(page, searchQuery, true);
-  }, [page, searchQuery]);
+  }, [page, searchQuery, refreshToken]);
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -213,10 +231,6 @@ const ProvostUserManagement: React.FC = () => {
     };
   }, [selectedStaffId, selectedStaff?.has_photo]);
 
-  const openDetail = (staffId: string) => {
-    fetchStaffDetail(staffId);
-  };
-
   const goBackToList = () => {
     setViewMode('list');
     setSelectedStaffId(null);
@@ -224,15 +238,23 @@ const ProvostUserManagement: React.FC = () => {
     setDetailError(null);
     setDetailLoading(false);
     setPhotoUrl(null);
+    setShowDeleteConfirm(false);
+    setDeleteConfirmInput('');
+  };
+
+  const openDeleteConfirm = () => {
+    setDeleteConfirmInput('');
+    setShowDeleteConfirm(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (deletingStaff) return;
+    setShowDeleteConfirm(false);
+    setDeleteConfirmInput('');
   };
 
   const handleDeleteStaff = async () => {
     if (!selectedStaffId || !selectedStaff) return;
-
-    const confirmed = window.confirm(
-      `Delete ${selectedStaff.name} (${selectedStaff.staff_id})? This action cannot be undone.`
-    );
-    if (!confirmed) return;
 
     try {
       setDeletingStaff(true);
@@ -249,13 +271,23 @@ const ProvostUserManagement: React.FC = () => {
         return;
       }
 
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
         throw new Error(payload.error || 'Failed to delete staff');
       }
 
+      if (payload?.email_sent === false) {
+        setWarning(payload.message || 'Staff deleted, but deletion email could not be sent.');
+      }
+
+      const shouldGoPreviousPage = staffs.length === 1 && page > 1;
       goBackToList();
-      await fetchStaffs(page, searchQuery, true);
+
+      if (shouldGoPreviousPage) {
+        setPage((prev) => Math.max(prev - 1, 1));
+      } else {
+        fetchStaffs(page, searchQuery, true);
+      }
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : 'Failed to delete staff');
     } finally {
@@ -267,7 +299,7 @@ const ProvostUserManagement: React.FC = () => {
   const currentTo = Math.min(page * limit, totalStaffs);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
         <div>
           <h2 className={`text-3xl font-bold ${theme.text}`}>Staff Management</h2>
@@ -285,7 +317,17 @@ const ProvostUserManagement: React.FC = () => {
         )}
       </div>
 
-      {viewMode === 'list' && (
+      {warning && (
+        <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="font-semibold text-amber-900">Notice</p>
+            <p className="text-sm text-amber-700 mt-1">{warning}</p>
+          </div>
+        </section>
+      )}
+
+      {viewMode === 'list' ? (
         <>
           <section className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-end gap-4">
@@ -347,7 +389,7 @@ const ProvostUserManagement: React.FC = () => {
                       <tr
                         key={staff.staff_id}
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => openDetail(staff.staff_id)}
+                        onClick={() => fetchStaffDetail(staff.staff_id)}
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -409,9 +451,7 @@ const ProvostUserManagement: React.FC = () => {
             </section>
           )}
         </>
-      )}
-
-      {viewMode === 'detail' && (
+      ) : (
         <section className="space-y-4">
           <button
             onClick={goBackToList}
@@ -460,7 +500,7 @@ const ProvostUserManagement: React.FC = () => {
                 <div className="md:ml-auto">
                   <button
                     type="button"
-                    onClick={handleDeleteStaff}
+                    onClick={openDeleteConfirm}
                     disabled={deletingStaff}
                     className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 transition-colors ${deletingStaff ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
@@ -505,6 +545,329 @@ const ProvostUserManagement: React.FC = () => {
           ) : null}
         </section>
       )}
+
+      {showDeleteConfirm && selectedStaff && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl w-full max-w-md border border-gray-200 shadow-xl">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Confirm Staff Deletion</h3>
+              <p className="text-sm text-gray-600 mt-2">
+                This will permanently remove staff <span className="font-semibold">{selectedStaff.name}</span> and related records.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                Type <span className="font-mono font-semibold">{selectedStaff.staff_id}</span> to confirm.
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder="Enter staff ID"
+                className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-red-500 outline-none transition-all"
+                disabled={deletingStaff}
+              />
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={closeDeleteConfirm}
+                disabled={deletingStaff}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-medium disabled:opacity-50"
+              >
+                <X className="w-4 h-4 inline mr-1" />
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteStaff}
+                disabled={deletingStaff || deleteConfirmInput.trim() !== selectedStaff.staff_id}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deletingStaff ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AddStaffTab: React.FC<{ onStaffAdded: () => void }> = ({ onStaffAdded }) => {
+  const [formData, setFormData] = useState<AddStaffFormData>({
+    staff_id: '',
+    email_address: '',
+    name: '',
+    phone_number: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [submittedData, setSubmittedData] = useState<AddStaffResponse | null>(null);
+
+  const validateForm = (): boolean => {
+    if (!formData.staff_id.trim()) {
+      setError('Staff ID is required');
+      return false;
+    }
+
+    if (!/^[A-Za-z0-9]{10}$/.test(formData.staff_id.trim())) {
+      setError('Staff ID must be exactly 10 alphanumeric characters');
+      return false;
+    }
+
+    if (!formData.email_address.trim()) {
+      setError('Email address is required');
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email_address.trim())) {
+      setError('Please enter a valid email address');
+      return false;
+    }
+
+    if (!formData.name.trim()) {
+      setError('Name is required');
+      return false;
+    }
+
+    if (!formData.phone_number.trim()) {
+      setError('Phone number is required');
+      return false;
+    }
+
+    if (!/^[+()\-\s0-9]{7,20}$/.test(formData.phone_number.trim())) {
+      setError('Please enter a valid phone number');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError(null);
+    if (warning) setWarning(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setWarning(null);
+    setSuccessMessage(null);
+
+    try {
+      const token = localStorage.getItem('hallmate_token');
+      const response = await fetch(`${API_BASE_URL}/staffs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          staff_id: formData.staff_id.trim(),
+          email_address: formData.email_address.trim(),
+          name: formData.name.trim(),
+          phone_number: formData.phone_number.trim()
+        })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = '#/login';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to create staff account (${response.status})`);
+      }
+
+      const payload = data as AddStaffResponse;
+      setSuccessMessage(payload.message);
+      setSubmittedData(payload);
+      if (payload.email_sent === false) {
+        setWarning('Welcome email could not be sent. Please distribute credentials manually.');
+      }
+
+      setFormData({ staff_id: '', email_address: '', name: '', phone_number: '' });
+      onStaffAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add staff');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl">
+      {error && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-red-900">Error</h4>
+            <p className="text-red-700 text-sm mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {warning && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-amber-900">Warning</h4>
+            <p className="text-amber-700 text-sm mt-1">{warning}</p>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-green-900">Staff Added Successfully</h4>
+            <p className="text-green-700 text-sm mt-1">{successMessage}</p>
+            {submittedData && (
+              <div className="mt-3 p-3 bg-green-100 rounded border border-green-200">
+                <p className="text-green-800 text-sm"><strong>Staff ID:</strong> {submittedData.staff_id}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-6">
+        <div>
+          <label htmlFor="staff_id" className="block text-sm font-semibold text-gray-700 mb-2">
+            Staff ID
+          </label>
+          <input
+            id="staff_id"
+            name="staff_id"
+            type="text"
+            value={formData.staff_id}
+            onChange={handleInputChange}
+            placeholder="Enter 10-character alphanumeric staff ID"
+            maxLength={10}
+            disabled={loading}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">Exactly 10 alphanumeric characters</p>
+        </div>
+
+        <div>
+          <label htmlFor="email_address" className="block text-sm font-semibold text-gray-700 mb-2">
+            Email Address
+          </label>
+          <input
+            id="email_address"
+            name="email_address"
+            type="email"
+            value={formData.email_address}
+            onChange={handleInputChange}
+            placeholder="Enter staff email address"
+            disabled={loading}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
+            Staff Name
+          </label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            value={formData.name}
+            onChange={handleInputChange}
+            placeholder="Enter full name"
+            disabled={loading}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="phone_number" className="block text-sm font-semibold text-gray-700 mb-2">
+            Phone Number
+          </label>
+          <input
+            id="phone_number"
+            name="phone_number"
+            type="tel"
+            value={formData.phone_number}
+            onChange={handleInputChange}
+            placeholder="Enter phone number"
+            disabled={loading}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+          />
+        </div>
+
+        <div className="pt-4 border-t border-gray-200">
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Creating Account...' : 'Add New Staff'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const ProvostUserManagement: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  const handleStaffAdded = () => {
+    setRefreshToken((prev) => prev + 1);
+  };
+
+  const tabs = [
+    { id: 'list' as const, label: 'Staff List' },
+    { id: 'add' as const, label: 'Add New Staff' }
+  ];
+
+  return (
+    <div className="staff-management-page">
+      <div className="flex gap-2 mb-6 border-b border-gray-200">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-6 py-3 font-semibold transition-all border-b-2 ${
+              activeTab === tab.id
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'list' && <StaffListTab refreshToken={refreshToken} />}
+      {activeTab === 'add' && <AddStaffTab onStaffAdded={handleStaffAdded} />}
+
+      <style>{`
+        .staff-management-page {
+          padding: 24px;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+      `}</style>
     </div>
   );
 };
