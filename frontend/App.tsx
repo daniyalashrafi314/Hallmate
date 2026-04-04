@@ -36,6 +36,7 @@ import StaffForum from './pages/Staff/StaffForum';
 import ProvostProfile from './pages/Provost/ProvostProfile';
 import ProvostForum from './pages/Provost/ProvostForum';
 import StaffEvents from './pages/Staff/StaffEvents';
+import ProvostEvents from './pages/Provost/ProvostEvents';
 
 // Provost Pages
 import ProvostRooms from './pages/Provost/ProvostRooms';
@@ -172,7 +173,16 @@ const App: React.FC = () => {
                         <Route path="/notices" element={<StudentNotices />} />
                         <Route path="/donations" element={userRole === UserRole.STUDENT ? <StudentDonations /> : <StaffDonations />} />
                         <Route path="/complaints" element={<StudentComplaints />} />
-                        <Route path="/events" element={userRole === UserRole.STUDENT ? <StudentEvents /> : <StaffEvents />} />
+                        <Route
+                          path="/events"
+                          element={
+                            userRole === UserRole.STUDENT
+                              ? <StudentEvents />
+                              : userRole === UserRole.STAFF
+                                ? <StaffEvents />
+                                : <ProvostEvents />
+                          }
+                        />
 
                         {/* Staff Routes */}
                         <Route path="/add-payments" element={<StaffAddPayments />} />

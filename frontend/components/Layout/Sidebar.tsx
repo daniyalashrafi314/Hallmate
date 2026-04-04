@@ -51,6 +51,7 @@ const Sidebar: React.FC = () => {
       { to: '/students', label: 'Student Management', icon: Users },
       { to: '/rooms', label: 'Rooms', icon: Grid },
       { to: '/approvals', label: 'Seat Approvals', icon: ShieldCheck },
+      { to: '/events', label: 'Events', icon: Calendar },
     ],
     [UserRole.SUPER_ADMIN]: [
       { to: '/manage-provosts', label: 'Manage Provosts', icon: UserCircle },

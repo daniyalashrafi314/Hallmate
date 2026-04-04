@@ -1097,5 +1097,142 @@ def add_student():
         "user_id": student_id
     }), 201
 
+# --- 9) EVENTS ---
+
+@admin_bp.route('/events', methods=['GET'])
+@token_required(allowed_roles=['admin'])
+def get_events():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    sql = """
+        SELECT
+            e.event_id   AS id,
+            e.name,
+            e.description,
+            TO_CHAR(e.date, 'YYYY-MM-DD') AS date,
+            e.video_link,
+            e.is_public,
+            e.hall_id,
+            (e.hall_id = %s) AS is_own_hall
+        FROM EVENTS e
+        WHERE e.hall_id = %s OR e.is_public = TRUE
+        ORDER BY e.date DESC
+    """
+    events = execute_read_query(sql, (current_hall_id, current_hall_id))
+    return jsonify(events if events else []), 200
+
+
+@admin_bp.route('/events', methods=['POST'])
+@token_required(allowed_roles=['admin'])
+def create_event():
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    data        = request.get_json() or {}
+    name        = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    date        = data.get('date')
+    video_link  = data.get('video_link', '').strip() or None
+    is_public   = bool(data.get('is_public', False))
+
+    if not name:
+        return jsonify({"error": "Event name is required"}), 400
+    if not date:
+        return jsonify({"error": "Event date is required"}), 400
+
+    try:
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    sql = """
+        INSERT INTO EVENTS (name, description, date, hall_id, video_link, is_public)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING event_id
+    """
+    result = execute_write_query(
+        sql,
+        (name, description, date, current_hall_id, video_link, is_public),
+        return_result=True
+    )
+
+    if not result:
+        return jsonify({"error": "Failed to create event"}), 500
+
+    return jsonify({
+        "message": "Event created successfully",
+        "event_id": result[0]['event_id']
+    }), 201
+
+
+@admin_bp.route('/events/<int:event_id>', methods=['PUT'])
+@token_required(allowed_roles=['admin'])
+def update_event(event_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    # Ownership check — admin can only edit events belonging to their own hall
+    owner_check = execute_read_query(
+        "SELECT event_id FROM EVENTS WHERE event_id = %s AND hall_id = %s",
+        (event_id, current_hall_id)
+    )
+    if not owner_check:
+        return jsonify({"error": "Event not found or unauthorized"}), 404
+
+    data        = request.get_json() or {}
+    name        = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    date        = data.get('date')
+    video_link  = data.get('video_link', '').strip() or None
+    is_public   = bool(data.get('is_public', False))
+
+    if not name:
+        return jsonify({"error": "Event name is required"}), 400
+    if not date:
+        return jsonify({"error": "Event date is required"}), 400
+
+    try:
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    sql = """
+        UPDATE EVENTS
+        SET name = %s, description = %s, date = %s, video_link = %s, is_public = %s
+        WHERE event_id = %s AND hall_id = %s
+    """
+    success = execute_write_query(
+        sql,
+        (name, description, date, video_link, is_public, event_id, current_hall_id)
+    )
+
+    if not success:
+        return jsonify({"error": "Failed to update event"}), 500
+
+    return jsonify({"message": "Event updated successfully"}), 200
+
+
+@admin_bp.route('/events/<int:event_id>', methods=['DELETE'])
+@token_required(allowed_roles=['admin'])
+def delete_event(event_id):
+    current_admin_id = request.current_user_id
+    current_hall_id  = get_current_hall_id(current_admin_id)
+
+    # Ownership check — admin can only delete events belonging to their own hall
+    owner_check = execute_read_query(
+        "SELECT event_id FROM EVENTS WHERE event_id = %s AND hall_id = %s",
+        (event_id, current_hall_id)
+    )
+    if not owner_check:
+        return jsonify({"error": "Event not found or unauthorized"}), 404
+
+    execute_write_query(
+        "DELETE FROM EVENTS WHERE event_id = %s AND hall_id = %s",
+        (event_id, current_hall_id)
+    )
+
+    return jsonify({"message": "Event deleted successfully"}), 200
+
 
 
