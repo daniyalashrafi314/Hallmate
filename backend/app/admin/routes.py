@@ -41,7 +41,193 @@ def get_dashboard():
     if not result:
         return jsonify({"error": "Staff not found"}), 404
 
-    return jsonify(result[0]), 200
+    student_stats_sql = """
+        SELECT
+            COUNT(*) AS total_students,
+            COUNT(*) FILTER (WHERE status = 'RESIDENT') AS resident_count,
+            COUNT(*) FILTER (WHERE status = 'ATTACHED') AS attached_count
+        FROM STUDENTS
+        WHERE hall_id = %s
+    """
+    student_stats = execute_read_query(student_stats_sql, (current_hall_id,))
+
+    seat_stats_sql = """
+        SELECT
+            COUNT(DISTINCT r.room_id) AS total_rooms,
+            COUNT(se.seat_number) AS total_seats,
+            COUNT(se.seat_number) FILTER (WHERE se.status = 'occupied') AS occupied_seats,
+            COUNT(se.seat_number) FILTER (WHERE se.status = 'vacant') AS vacant_seats
+        FROM ROOMS r
+        LEFT JOIN SEATS se ON r.room_id = se.room_id
+        WHERE r.hall_id = %s
+    """
+    seat_stats = execute_read_query(seat_stats_sql, (current_hall_id,))
+
+    task_stats_sql = """
+        SELECT COUNT(*) AS pending_tasks
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+          AND t.status NOT IN ('completed', 'cancelled')
+    """
+    task_stats = execute_read_query(task_stats_sql, (current_hall_id,))
+
+    approval_stats_sql = """
+        SELECT COUNT(*) AS pending_seat_approvals
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS s ON sa.student_id = s.student_id
+        WHERE s.hall_id = %s
+          AND sa.status = 'Pending'
+    """
+    approval_stats = execute_read_query(approval_stats_sql, (current_hall_id,))
+
+    donation_stats_sql = """
+        SELECT COUNT(*) AS pending_donations
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON af.donation_id = d.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS sf ON af.staff_id = sf.staff_id
+        WHERE (st.hall_id = %s OR sf.hall_id = %s)
+          AND d.status = 'Pending'
+    """
+    donation_stats = execute_read_query(donation_stats_sql, (current_hall_id, current_hall_id))
+
+    complaint_stats_sql = """
+        SELECT COUNT(*) AS pending_complaints
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        WHERE s.hall_id = %s
+          AND c.status = 'Pending'
+    """
+    complaint_stats = execute_read_query(complaint_stats_sql, (current_hall_id,))
+
+    event_stats_sql = """
+        SELECT COUNT(*) AS upcoming_events
+        FROM EVENTS e
+        WHERE (e.hall_id = %s OR e.is_public = TRUE)
+          AND e.date >= CURRENT_DATE
+    """
+    event_stats = execute_read_query(event_stats_sql, (current_hall_id,))
+
+    top_task_sql = """
+        SELECT
+            t.task_id,
+            t.title,
+            t.priority,
+            t.status,
+            TO_CHAR(t.due_date, 'YYYY-MM-DD') AS due_date,
+            TO_CHAR(t.created_at, 'YYYY-MM-DD') AS created_at,
+            ta.staff_id,
+            s.name AS staff_name
+        FROM TASKS t
+        JOIN task_assignments ta ON t.task_id = ta.task_id
+        JOIN STAFFS s ON ta.staff_id = s.staff_id
+        WHERE s.hall_id = %s
+          AND t.status NOT IN ('completed', 'cancelled')
+        ORDER BY
+            CASE t.priority
+                WHEN 'high' THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'low' THEN 3
+            END ASC,
+            t.due_date ASC NULLS LAST,
+            t.created_at DESC
+        LIMIT 1
+    """
+    top_task = execute_read_query(top_task_sql, (current_hall_id,))
+
+    top_application_sql = """
+        SELECT
+            sa.application_id,
+            sa.student_id,
+            st.name AS student_name,
+            TO_CHAR(sa.date, 'YYYY-MM-DD') AS applied_on,
+            sa.priority_value,
+            sa.status
+        FROM SEAT_APPLICATION sa
+        JOIN STUDENTS st ON sa.student_id = st.student_id
+        WHERE st.hall_id = %s
+          AND sa.status = 'Pending'
+        ORDER BY sa.priority_value DESC NULLS LAST, sa.date ASC
+        LIMIT 1
+    """
+    top_application = execute_read_query(top_application_sql, (current_hall_id,))
+
+    top_donation_sql = """
+        SELECT
+            d.donation_id,
+            d.status,
+            d.description,
+            TO_CHAR(d.start_date, 'YYYY-MM-DD') AS start_date,
+            TO_CHAR(d.end_date, 'YYYY-MM-DD') AS end_date
+        FROM DONATIONS d
+        JOIN ASKS_FOR af ON af.donation_id = d.donation_id
+        LEFT JOIN STUDENTS st ON af.student_id = st.student_id
+        LEFT JOIN STAFFS sf ON af.staff_id = sf.staff_id
+        WHERE (st.hall_id = %s OR sf.hall_id = %s)
+        ORDER BY
+            CASE d.status
+                WHEN 'Pending' THEN 1
+                WHEN 'Approved' THEN 2
+                ELSE 3
+            END ASC,
+            d.start_date DESC,
+            d.donation_id DESC
+        LIMIT 1
+    """
+    top_donation = execute_read_query(top_donation_sql, (current_hall_id, current_hall_id))
+
+    top_complaint_sql = """
+        SELECT
+            c.complaint_id,
+            c.complaint_type AS type,
+            LEFT(c.description, 120) AS description_preview,
+            TO_CHAR(c.date, 'YYYY-MM-DD') AS date,
+            COUNT(cu.student_id) AS upvote_count
+        FROM COMPLAINTS c
+        JOIN STUDENTS s ON c.student_id = s.student_id
+        LEFT JOIN COMPLAINT_UPVOTES cu ON cu.complaint_id = c.complaint_id
+        WHERE s.hall_id = %s
+          AND c.status = 'Pending'
+        GROUP BY c.complaint_id, c.complaint_type, c.description, c.date
+        ORDER BY upvote_count DESC, c.date DESC
+        LIMIT 1
+    """
+    top_complaint = execute_read_query(top_complaint_sql, (current_hall_id,))
+
+    top_event_sql = """
+        SELECT
+            e.event_id,
+            e.name,
+            TO_CHAR(e.date, 'YYYY-MM-DD') AS date,
+            e.is_public,
+            (e.hall_id = %s) AS is_own_hall
+        FROM EVENTS e
+        WHERE e.hall_id = %s OR e.is_public = TRUE
+        ORDER BY
+            CASE WHEN e.date >= CURRENT_DATE THEN 0 ELSE 1 END,
+            e.date ASC,
+            e.event_id DESC
+        LIMIT 1
+    """
+    top_event = execute_read_query(top_event_sql, (current_hall_id, current_hall_id))
+
+    return jsonify({
+        **result[0],
+        "student_stats": student_stats[0] if student_stats else {},
+        "seat_stats": seat_stats[0] if seat_stats else {},
+        "pending_tasks": task_stats[0]['pending_tasks'] if task_stats else 0,
+        "pending_seat_approvals": approval_stats[0]['pending_seat_approvals'] if approval_stats else 0,
+        "pending_donations": donation_stats[0]['pending_donations'] if donation_stats else 0,
+        "pending_complaints": complaint_stats[0]['pending_complaints'] if complaint_stats else 0,
+        "upcoming_events": event_stats[0]['upcoming_events'] if event_stats else 0,
+        "top_task": top_task[0] if top_task else None,
+        "top_application": top_application[0] if top_application else None,
+        "top_donation": top_donation[0] if top_donation else None,
+        "top_complaint": top_complaint[0] if top_complaint else None,
+        "top_event": top_event[0] if top_event else None,
+    }), 200
 
 
 # --- 1) ADMIN PROFILE PAGE ---
