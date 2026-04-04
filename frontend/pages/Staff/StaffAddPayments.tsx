@@ -83,6 +83,7 @@ const AddPaymentTab: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const paymentTypes = ['Hall Fee', 'Dining Fee', 'Event Fee', 'Maintenance', 'Other'];
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const fetchInitialData = async () => {
     try {
@@ -226,6 +227,11 @@ const AddPaymentTab: React.FC = () => {
 
     if (!paymentForm.due_date) {
       setError('Please select a due date');
+      return;
+    }
+
+    if (paymentForm.due_date < todayStr) {
+      setError('Due date cannot be in the past');
       return;
     }
 
@@ -461,6 +467,7 @@ const AddPaymentTab: React.FC = () => {
               value={paymentForm.due_date}
               onChange={handlePaymentFormChange}
               className="form-input"
+              min={todayStr}
             />
           </div>
         </div>

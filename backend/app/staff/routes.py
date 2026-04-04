@@ -485,6 +485,14 @@ def add_payments():
     
     if not student_ids or not amount or not due_time or not payment_type:
         return jsonify({"error":"Missing fields"}), 400
+
+    try:
+        parsed_due_time = datetime.datetime.strptime(str(due_time), '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({"error": "Invalid due date format. Use YYYY-MM-DD."}), 400
+
+    if parsed_due_time < datetime.date.today():
+        return jsonify({"error": "Due date cannot be in the past."}), 400
     
     sql = """
     SELECT student_id
