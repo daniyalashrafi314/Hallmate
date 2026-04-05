@@ -25,7 +25,15 @@ Hallmate is a university hall management system built for a Database Management 
 
 ## ERD Diagram
 
-![ER Diagram](./ERD/ERD.PNG)
+The first diagram below shows the initial database design. The second diagram shows the final database state after all tables, relationships, and features were built.
+
+### Initial Design
+
+![Initial ER Diagram](./ERD/ERD.PNG)
+
+### Final Design
+
+![Final ER Diagram](./ERD/ERD(FINAL).png)
 
 ## Project Structure
 
@@ -49,19 +57,24 @@ Install these tools before running the project:
 
 ## Database Setup
 
-Create a PostgreSQL database, then run scripts in this order:
+Create a PostgreSQL database, then use one of the following setup paths:
 
-1. Create schema and tables (choose one primary schema script):
-	- `Schema/Schemas.sql` (recommended)
-	- or `Schema/schema1.sql`
-2. Insert mock/seed data:
-	- `Schema/mock_data_testing.sql`
-3. Optional procedures/triggers logic (if required for your evaluation):
-	- `Schema/plsql.sql`
+### Option 1: Restore from backup dump
 
-Alternative restore path:
+This is the easiest one-line setup if you already have the database dump file:
 
-- Use `dump.sql` or `backup/backup.sql` if your evaluator prefers restoring from a complete dump.
+```bash
+psql -h <db_host> -U <db_user> -d <db_name> -f backup/backup.sql
+```
+
+You can also use the backup file as the source for a clean restore when setting up the project locally.
+
+### Option 2: Run the SQL scripts manually
+
+1. Create the tables using `Schema/schema1.sql`.
+2. Run the PL part of the program using `Schema/plsql.sql`.
+
+Note: The older `Schemas.sql` and `mock_data_testing.sql` files are no longer the recommended setup path.
 
 ## Backend Setup and Run
 
@@ -114,8 +127,9 @@ npm run preview
 
 ## Configuration Notes
 
-- Update database connection settings in `backend/app/db.py` before running in a new environment.
-- For cleaner deployment/submission practice, use environment variables for DB credentials instead of hardcoding secrets.
+- Update the email sender credentials in `backend/app/email_service.py` by setting `SENDER_EMAIL` and `SENDER_PASSWORD`.
+- Update the database connection settings in `backend/app/db.py` by setting your DB host, database name, user, password, and SSL mode.
+- For cleaner deployment/submission practice, use environment variables for email and DB credentials instead of hardcoding secrets.
 
 ## Suggested Test Run Flow
 
@@ -127,7 +141,7 @@ npm run preview
 ## Submission Checklist
 
 - Include all source code (`backend/`, `frontend/`)
-- Include database scripts (`Schema/`, `dump.sql` or backup SQL)
+- Include database scripts (`Schema/` and backup SQL)
 - Include this README with setup steps
 - Remove unnecessary generated folders before zipping (`node_modules`, `.venv`, `__pycache__`, build artifacts)
 - Create one ZIP file named exactly: `StudentID1_StudentID2.zip`
