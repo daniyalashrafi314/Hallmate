@@ -95,13 +95,13 @@ CREATE OR REPLACE FUNCTION notify_complaint_update()
 RETURNS TRIGGER AS $$
 BEGIN
     -- Only trigger if the status changed to Resolved or Dismissed
-    IF NEW.status IN ('Resolved', 'Dismissed') AND OLD.status != NEW.status THEN
+    IF NEW.status IN ('Resolved'::complaint_status, 'Dismissed'::complaint_status) AND OLD.status != NEW.status THEN
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
         VALUES (
             NEW.student_id, 
             'Complaint ' || NEW.status, 
             'Your complaint regarding ' || NEW.complaint_type || ' has been marked as ' || NEW.status || '.', 
-            'COMPLAINT', 
+            'COMPLAINT'::notification_type, 
             '/student/complaints'
         );
     END IF;
@@ -143,19 +143,32 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_hall_id INT;
 BEGIN
-    -- Find which hall the staff member who posted the notice belongs to
-    SELECT hall_id INTO v_hall_id FROM STAFFS WHERE staff_id = NEW.staff_id;
+    SELECT s.hall_id
+    INTO v_hall_id
+    FROM STAFFS s
+    WHERE s.staff_id = NEW.staff_id;
 
     IF NEW.is_public THEN
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
-        SELECT student_id, 'New Public Notice', NEW.title, 'NOTICE', '/student/notices'
-        FROM STUDENTS;
+        SELECT
+            st.student_id,
+            'New Public Notice',
+            COALESCE(NEW.title, 'Notice'),
+            'NOTICE'::notification_type,
+            '/student/notices'
+        FROM STUDENTS st;
     ELSE
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
-        SELECT student_id, 'New Hall Notice', NEW.title, 'NOTICE', '/student/notices'
-        FROM STUDENTS
-        WHERE hall_id = v_hall_id;
+        SELECT
+            st.student_id,
+            'New Hall Notice',
+            COALESCE(NEW.title, 'Notice'),
+            'NOTICE'::notification_type,
+            '/student/notices'
+        FROM STUDENTS st
+        WHERE st.hall_id = v_hall_id;
     END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -168,7 +181,7 @@ CREATE OR REPLACE FUNCTION notify_seat_application_update()
 RETURNS TRIGGER AS $$
 BEGIN
     -- Updated to match your schema's 'Refused'
-    IF NEW.status IN ('Approved', 'Refused') AND OLD.status != NEW.status THEN
+    IF NEW.status IN ('Approved'::application_status, 'Refused'::application_status) AND OLD.status != NEW.status THEN
         INSERT INTO NOTIFICATIONS (student_id, title, message, type, target_url)
         VALUES (
             NEW.student_id, 
@@ -191,7 +204,7 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_student_id CHAR(7);
 BEGIN
-    IF NEW.status = 'Approved' AND OLD.status != 'Approved' THEN
+    IF NEW.status = 'Approved'::donation_status AND OLD.status != 'Approved'::donation_status THEN
         -- Find out which student asked for this donation
         SELECT student_id INTO v_student_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
 
@@ -202,7 +215,7 @@ BEGIN
                 v_student_id, 
                 'Donation Request Approved', 
                 'Your donation request has been approved and is now live.', 
-                'DONATION', 
+                'DONATION'::notification_type, 
                 '/student/donations'
             );
         END IF;
@@ -236,7 +249,7 @@ BEGIN
             v_student_id, 
             'New Donation Pledge!', 
             'Someone has pledged Tk' || v_amount || ' towards your request.', 
-            'DONATION', 
+            'DONATION'::notification_type, 
             '/student/donations'
         );
     END IF;
@@ -277,7 +290,7 @@ BEGIN
         NEW.student_id, 
         'New Payment Due', 
         'A new fee of ৳' || v_amount || ' for ' || COALESCE(v_type, 'fees') || ' has been posted. Due by ' || TO_CHAR(v_due, 'YYYY-MM-DD') || '.', 
-        'PAYMENT', 
+        'PAYMENT'::notification_type, 
         '/student/payments'
     );
     RETURN NEW;
@@ -293,7 +306,7 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_student_id CHAR(7);
 BEGIN
-    IF NEW.status = 'Overdue' AND OLD.status != 'Overdue' THEN
+    IF NEW.status = 'Overdue'::payment_status AND OLD.status != 'Overdue'::payment_status THEN
         -- Find the student associated with this payment
         SELECT student_id INTO v_student_id FROM FEES WHERE payment_id = NEW.payment_id;
 
@@ -303,7 +316,7 @@ BEGIN
                 v_student_id, 
                 'Payment Overdue Alert', 
                 'Your payment of ৳' || NEW.amount || ' for ' || COALESCE(NEW.payment_type, 'fees') || ' is now overdue. Please clear it immediately.', 
-                'PAYMENT', 
+                'PAYMENT':: notification_type, 
                 '/student/payments'
             );
         END IF;
@@ -325,18 +338,17 @@ DECLARE
     v_task_priority task_priority;
     v_task_due_date DATE;
 BEGIN
-    -- Get task details
-    SELECT title, priority, due_date 
+    SELECT title, priority, due_date
     INTO v_task_title, v_task_priority, v_task_due_date
-    FROM TASKS WHERE task_id = NEW.task_id;
+    FROM TASKS
+    WHERE task_id = NEW.task_id;
 
-    -- Insert notification for the assigned staff member
     INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
     VALUES (
         NEW.staff_id,
         'New Task Assigned',
-        'You have been assigned a new task: "' || v_task_title || '" with priority: ' || v_task_priority || '.',
-        'TASK',
+        'You have been assigned a new task: "' || v_task_title || '" with priority: ' || v_task_priority::text || '.',
+        'TASK'::notification_type,
         '/tasks'
     );
 
@@ -350,27 +362,31 @@ FOR EACH ROW EXECUTE FUNCTION notify_task_assignment();
 
 
 -- TRIGGER 2: Notify staff when their donation request is approved
+
 CREATE OR REPLACE FUNCTION notify_staff_donation_approved()
 RETURNS TRIGGER AS $$
 DECLARE
     v_staff_id CHAR(10);
 BEGIN
-    IF NEW.status = 'Approved' AND OLD.status != 'Approved' THEN
-        -- Find out which staff member asked for this donation
-        SELECT staff_id INTO v_staff_id FROM ASKS_FOR WHERE donation_id = NEW.donation_id;
+    IF NEW.status = 'Approved'::donation_status
+       AND OLD.status IS DISTINCT FROM NEW.status THEN
+        SELECT staff_id
+        INTO v_staff_id
+        FROM ASKS_FOR
+        WHERE donation_id = NEW.donation_id;
 
-        -- Only notify if a staff member asked for it
         IF v_staff_id IS NOT NULL THEN
             INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
             VALUES (
-                v_staff_id, 
-                'Donation Request Approved', 
-                'Your donation request has been approved and is now live.', 
-                'DONATION', 
+                v_staff_id,
+                'Donation Request Approved',
+                'Your donation request has been approved and is now live.',
+                'DONATION'::notification_type,
                 '/donations'
             );
         END IF;
     END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -386,17 +402,26 @@ CREATE OR REPLACE FUNCTION notify_staff_new_event()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.is_public THEN
-        -- Notify ALL staff members (from all halls)
         INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
-        SELECT DISTINCT staff_id, 'New Inter-Hall Event', NEW.name, 'EVENT', '/events'
-        FROM STAFFS;
+        SELECT DISTINCT
+            s.staff_id,
+            'New Inter-Hall Event',
+            NEW.name,
+            'EVENT'::notification_type,
+            '/events'
+        FROM STAFFS s;
     ELSE
-        -- Notify only staff members in the same hall
         INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
-        SELECT DISTINCT staff_id, 'New Hall Event', NEW.name, 'EVENT', '/events'
-        FROM STAFFS
-        WHERE hall_id = NEW.hall_id;
+        SELECT DISTINCT
+            s.staff_id,
+            'New Hall Event',
+            NEW.name,
+            'EVENT'::notification_type,
+            '/events'
+        FROM STAFFS s
+        WHERE s.hall_id = NEW.hall_id;
     END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -412,21 +437,32 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_hall_id INT;
 BEGIN
-    -- Find which hall the staff member who posted the notice belongs to
-    SELECT hall_id INTO v_hall_id FROM STAFFS WHERE staff_id = NEW.staff_id;
+    SELECT s.hall_id
+    INTO v_hall_id
+    FROM STAFFS s
+    WHERE s.staff_id = NEW.staff_id;
 
     IF NEW.is_public THEN
-        -- Notify ALL staff members
         INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
-        SELECT DISTINCT staff_id, 'New Public Notice', NEW.title, 'NOTICE', '/notices'
-        FROM STAFFS;
+        SELECT
+            sf.staff_id,
+            'New Public Notice',
+            COALESCE(NEW.title, 'Notice'),
+            'NOTICE'::notification_type,
+            '/notices'
+        FROM STAFFS sf;
     ELSE
-        -- Notify only staff members in the same hall
         INSERT INTO NOTIFICATIONS (staff_id, title, message, type, target_url)
-        SELECT DISTINCT staff_id, 'New Hall Notice', NEW.title, 'NOTICE', '/notices'
-        FROM STAFFS
-        WHERE hall_id = v_hall_id;
+        SELECT
+            sf.staff_id,
+            'New Hall Notice',
+            COALESCE(NEW.title, 'Notice'),
+            'NOTICE'::notification_type,
+            '/notices'
+        FROM STAFFS sf
+        WHERE sf.hall_id = v_hall_id;
     END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -453,7 +489,7 @@ BEGIN
         NEW.staff_id, 
         'New Salary Posted', 
         'Your salary of Tk' || v_amount || ' has been posted. Due by ' || TO_CHAR(v_due, 'YYYY-MM-DD') || '.', 
-        'SALARY', 
+        'SALARY'::notification_type, 
         '/salary'
     );
     RETURN NEW;
